@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Waypoints,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 
 import {
@@ -67,19 +67,15 @@ function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(mediaQuery.matches);
-
-    update();
-    mediaQuery.addEventListener("change", update);
-
-    return () => mediaQuery.removeEventListener("change", update);
-  }, []);
-
-  return reduced;
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      mediaQuery.addEventListener("change", onStoreChange);
+      return () => mediaQuery.removeEventListener("change", onStoreChange);
+    },
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () => false,
+  );
 }
 
 function ValueCard({
@@ -533,9 +529,9 @@ function CurvePanel() {
   );
 }
 
-function PointMathPanel() {
-  const operations = [eccTrace.doubleExample, eccTrace.addExample];
+const pointMathOperations = [eccTrace.doubleExample, eccTrace.addExample];
 
+function PointMathPanel() {
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -551,7 +547,7 @@ function PointMathPanel() {
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        {operations.map((operation) => (
+        {pointMathOperations.map((operation) => (
           <div key={operation.id} className="rounded-lg border border-neutral-900/10 bg-neutral-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">
               {operation.label}

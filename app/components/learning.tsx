@@ -23,7 +23,7 @@ import {
   Sparkles,
   Waypoints,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, NavLink } from "react-router";
 
 import {
@@ -199,21 +199,21 @@ export function FamilyPill({ family }: { family: LessonModule["family"] }) {
   );
 }
 
-export function StepTimeline({ sections }: { sections: LessonSection[] }) {
-  const icons: Record<LessonSection["type"], IconComponent> = {
-    concept: BrainCircuit,
-    math: Calculator,
-    "key-generation": KeyRound,
-    "encryption-flow": LockKeyhole,
-    "decryption-flow": ShieldCheck,
-    demo: Binary,
-    checkpoint: CheckCircle2,
-  };
+const stepTimelineIcons: Record<LessonSection["type"], IconComponent> = {
+  concept: BrainCircuit,
+  math: Calculator,
+  "key-generation": KeyRound,
+  "encryption-flow": LockKeyhole,
+  "decryption-flow": ShieldCheck,
+  demo: Binary,
+  checkpoint: CheckCircle2,
+};
 
+export function StepTimeline({ sections }: { sections: LessonSection[] }) {
   return (
     <ol className="grid gap-3">
       {sections.map((section, index) => {
-        const Icon = icons[section.type];
+        const Icon = stepTimelineIcons[section.type];
 
         return (
           <li
@@ -364,19 +364,15 @@ export function KeyLifecyclePanel({ module }: { module: LessonModule }) {
 }
 
 function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(mediaQuery.matches);
-
-    update();
-    mediaQuery.addEventListener("change", update);
-
-    return () => mediaQuery.removeEventListener("change", update);
-  }, []);
-
-  return reduced;
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      mediaQuery.addEventListener("change", onStoreChange);
+      return () => mediaQuery.removeEventListener("change", onStoreChange);
+    },
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () => false,
+  );
 }
 
 export function BitBlockGrid({
