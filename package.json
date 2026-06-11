@@ -9,9 +9,8 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
-    "@react-router/node": "7.16.0",
     "@netlify/vite-plugin": "^2.12.7",
-    "@netlify/vite-plugin-react-router": "^3.1.1",
+    "@react-router/node": "7.16.0",
     "@react-router/serve": "7.16.0",
     "isbot": "^5.1.36",
     "katex": "^0.17.0",
@@ -21,6 +20,7 @@
     "react-router": "7.16.0"
   },
   "devDependencies": {
+    "@netlify/vite-plugin-react-router": "^3.1.1",
     "@react-router/dev": "7.16.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^22",
