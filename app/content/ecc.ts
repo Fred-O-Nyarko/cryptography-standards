@@ -240,7 +240,11 @@ function enumerateCurvePoints(p: number, a: number, b: number) {
   return points;
 }
 
-export function createEccTrace(): EccTrace {
+export function createEccTrace(
+  alicePrivate = 7,
+  bobPrivate = 9,
+  message = 12,
+): EccTrace {
   const p = 17;
   const a = 2;
   const b = 2;
@@ -267,15 +271,12 @@ export function createEccTrace(): EccTrace {
     p,
     a,
   );
-  const alicePrivate = 7;
-  const bobPrivate = 9;
   const aliceScalar = scalarMultiply(alicePrivate, basePoint, p, a);
   const bobScalar = scalarMultiply(bobPrivate, basePoint, p, a);
   const sharedFromAlice = scalarMultiply(alicePrivate, bobScalar.result, p, a);
   const sharedFromBob = scalarMultiply(bobPrivate, aliceScalar.result, p, a);
   const sharedSecret = sharedFromAlice.result;
   const sharedMask = sharedSecret?.x ?? 0;
-  const message = 12;
   const ciphertext = mod(message + sharedMask, p);
   const decryptedMessage = mod(ciphertext - sharedMask, p);
 

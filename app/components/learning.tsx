@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Dices,
   ExternalLink,
   GraduationCap,
   KeyRound,
@@ -15,9 +16,11 @@ import {
   Play,
   RotateCcw,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
+  TriangleAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, NavLink } from "react-router";
 
 import {
@@ -28,6 +31,7 @@ import {
   type Reference,
   type VisualizerConfig,
 } from "~/content/crypto";
+import { normalizeHex, textToBlockHex } from "~/content/trace-inputs";
 
 type IconComponent = typeof ShieldCheck;
 
@@ -757,5 +761,350 @@ export function CollapsibleSection({
       </summary>
       <div className="px-5 pb-5">{children}</div>
     </details>
+  );
+}
+
+const inputClassName =
+  "min-h-10 w-full rounded-md border border-neutral-900/10 bg-[#f7f4ee] px-3 text-sm font-semibold text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700";
+
+function FieldError({ error }: { error?: string }) {
+  if (!error) {
+    return null;
+  }
+
+  return <p className="mt-2 text-sm font-bold text-red-900">{error}</p>;
+}
+
+function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
+  return (
+    <label
+      htmlFor={htmlFor}
+      className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500"
+    >
+      {children}
+    </label>
+  );
+}
+
+export function TraceInputsPanel({
+  title,
+  description,
+  error,
+  children,
+  footer,
+}: {
+  title: string;
+  description?: string;
+  error: string | null;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
+      <div className="flex items-center gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-md bg-emerald-100 text-emerald-950">
+          <SlidersHorizontal aria-hidden="true" size={19} />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
+            Your inputs
+          </p>
+          <h3 className="text-xl font-bold text-neutral-950">{title}</h3>
+        </div>
+      </div>
+      {description ? (
+        <p className="mt-3 text-sm leading-6 text-neutral-700">{description}</p>
+      ) : null}
+      <div className="mt-5">{children}</div>
+      {footer ? <div className="mt-5 flex flex-wrap items-center gap-3">{footer}</div> : null}
+      {error ? (
+        <div
+          role="alert"
+          className="mt-5 flex items-start gap-3 rounded-md border border-amber-900/20 bg-amber-100 p-4"
+        >
+          <TriangleAlert aria-hidden="true" className="mt-0.5 shrink-0 text-amber-900" size={18} />
+          <p className="text-sm font-semibold leading-6 text-amber-950">
+            {error} — showing the last valid run below.
+          </p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export type TextOrHexValue = {
+  mode: "text" | "hex";
+  text: string;
+  hex: string;
+};
+
+export function TextOrHexField({
+  label,
+  value,
+  onChange,
+  byteLength,
+  error,
+}: {
+  label: string;
+  value: TextOrHexValue;
+  onChange: (value: TextOrHexValue) => void;
+  byteLength: number;
+  error?: string;
+}) {
+  const id = useId();
+  const hexDigits = byteLength * 2;
+  const normalizedHex = normalizeHex(value.hex);
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <div className="flex gap-1" role="group" aria-label={`${label} input mode`}>
+          {(["text", "hex"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onChange({ ...value, mode })}
+              aria-pressed={value.mode === mode}
+              className={cx(
+                "min-h-8 rounded-md px-3 text-xs font-bold uppercase tracking-[0.1em] transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700",
+                value.mode === mode
+                  ? "bg-neutral-950 text-white"
+                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200",
+              )}
+            >
+              {mode === "text" ? "Text" : "Hex"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {value.mode === "text" ? (
+        <>
+          <input
+            id={id}
+            type="text"
+            value={value.text}
+            onChange={(event) => onChange({ ...value, text: event.target.value })}
+            placeholder={`Up to ${byteLength} characters`}
+            className={cx(inputClassName, "mt-2")}
+          />
+          <p className="mt-2 text-sm text-neutral-600">
+            Derived hex:{" "}
+            <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs font-bold text-neutral-800">
+              {textToBlockHex(value.text, byteLength)}
+            </code>{" "}
+            <span className="text-xs">
+              (padded with spaces / truncated to {byteLength} bytes)
+            </span>
+          </p>
+        </>
+      ) : (
+        <>
+          <input
+            id={id}
+            type="text"
+            value={value.hex}
+            onChange={(event) => onChange({ ...value, hex: event.target.value })}
+            placeholder={`${hexDigits} hex digits`}
+            spellCheck={false}
+            autoComplete="off"
+            className={cx(inputClassName, "mt-2 font-mono")}
+          />
+          <p className="mt-2 text-xs font-semibold text-neutral-500">
+            {normalizedHex.length}/{hexDigits} hex digits
+          </p>
+        </>
+      )}
+      <FieldError error={error} />
+    </div>
+  );
+}
+
+export function HexKeyField({
+  label,
+  value,
+  onChange,
+  byteLength,
+  onGenerate,
+  error,
+  helpText,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  byteLength: number;
+  onGenerate?: () => void;
+  error?: string;
+  helpText?: string;
+}) {
+  const id = useId();
+  const hexDigits = byteLength * 2;
+  const normalized = normalizeHex(value);
+
+  return (
+    <div>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <div className="mt-2 flex gap-2">
+        <input
+          id={id}
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={`${hexDigits} hex digits`}
+          spellCheck={false}
+          autoComplete="off"
+          className={cx(inputClassName, "font-mono")}
+        />
+        {onGenerate ? (
+          <button
+            type="button"
+            onClick={onGenerate}
+            className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md bg-neutral-950 px-3 text-sm font-bold text-white transition-colors duration-100 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            title={`Generate a random ${label.toLowerCase()}`}
+          >
+            <Dices aria-hidden="true" size={16} />
+            Generate
+          </button>
+        ) : null}
+      </div>
+      <p className="mt-2 text-xs font-semibold text-neutral-500">
+        {normalized.length}/{hexDigits} hex digits
+        {helpText ? ` · ${helpText}` : ""}
+      </p>
+      <FieldError error={error} />
+    </div>
+  );
+}
+
+export function NumberField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  helpText,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min: number;
+  max: number;
+  helpText?: string;
+  error?: string;
+}) {
+  const id = useId();
+
+  return (
+    <div>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <input
+        id={id}
+        type="number"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        min={min}
+        max={max}
+        className={cx(inputClassName, "mt-2 font-mono")}
+      />
+      <p className="mt-2 text-xs font-semibold text-neutral-500">
+        Range {min}–{max}
+        {helpText ? ` · ${helpText}` : ""}
+      </p>
+      <FieldError error={error} />
+    </div>
+  );
+}
+
+export function LetterField({
+  label,
+  value,
+  onChange,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+}) {
+  const id = useId();
+  const isLetter = /^[A-Za-z]$/.test(value);
+
+  return (
+    <div>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <input
+        id={id}
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value.slice(-1))}
+        maxLength={1}
+        placeholder="A"
+        autoComplete="off"
+        className={cx(inputClassName, "mt-2 font-mono")}
+      />
+      <p className="mt-2 text-xs font-semibold text-neutral-500">
+        {isLetter
+          ? `${value} → character code ${value.charCodeAt(0)}`
+          : "Single letter A–Z or a–z"}
+      </p>
+      <FieldError error={error} />
+    </div>
+  );
+}
+
+export function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  helpText,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string; disabled?: boolean }>;
+  helpText?: string;
+}) {
+  const id = useId();
+
+  return (
+    <div>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <select
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cx(inputClassName, "mt-2 font-mono")}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value} disabled={option.disabled}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {helpText ? (
+        <p className="mt-2 text-xs font-semibold text-neutral-500">{helpText}</p>
+      ) : null}
+    </div>
+  );
+}
+
+export function GenerateKeysButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-10 items-center gap-2 rounded-md bg-neutral-950 px-4 text-sm font-bold text-white transition-colors duration-100 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+    >
+      <Dices aria-hidden="true" size={17} />
+      {children}
+    </button>
   );
 }

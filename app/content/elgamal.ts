@@ -127,14 +127,15 @@ function powerCycle(base: number, modulus: number) {
   return entries;
 }
 
-export function createElGamalTrace(): ElGamalTrace {
+export function createElGamalTrace(
+  privateKey = 6,
+  ephemeralKey = 15,
+  message = 13,
+  reusedMessage = 7,
+): ElGamalTrace {
   const p = 23;
   const g = 5;
   const order = p - 1;
-  const privateKey = 6;
-  const ephemeralKey = 15;
-  const message = 13;
-  const reusedMessage = 7;
   const privateKeyPower = modPow(g, privateKey, p);
   const publicKey = privateKeyPower.result;
   const ephemeralPower = modPow(g, ephemeralKey, p);

@@ -5,13 +5,84 @@ import {
   KeyRound,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
-import { MathExpression, VisualizerDock } from "~/components/learning";
-import { aesTrace, stateHexToRows, type AesRoundTrace } from "~/content/aes";
+import {
+  HexKeyField,
+  MathExpression,
+  TextOrHexField,
+  type TextOrHexValue,
+  TraceInputsPanel,
+  VisualizerDock,
+} from "~/components/learning";
+import {
+  aesTrace as defaultAesTrace,
+  createAes128Trace,
+  stateHexToRows,
+  type AesRoundTrace,
+  type AesTrace,
+} from "~/content/aes";
+import {
+  isValidHexBlock,
+  normalizeHex,
+  randomHex,
+  textToBlockHex,
+} from "~/content/trace-inputs";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+const AesTraceContext = createContext<AesTrace>(defaultAesTrace);
+
+function useTrace() {
+  return useContext(AesTraceContext);
+}
+
+type AesFields = {
+  plaintext: TextOrHexValue;
+  keyHex: string;
+};
+
+const AES_DEFAULT_FIELDS: AesFields = {
+  plaintext: { mode: "hex", text: "", hex: defaultAesTrace.plaintextHex },
+  keyHex: defaultAesTrace.keyHex,
+};
+
+type AesFieldErrors = { plaintext?: string; key?: string };
+
+function parseAesFields(
+  fields: AesFields,
+):
+  | { ok: true; plaintextHex: string; keyHex: string }
+  | { ok: false; message: string; fieldErrors: AesFieldErrors } {
+  const fieldErrors: AesFieldErrors = {};
+  const plaintextHex =
+    fields.plaintext.mode === "text"
+      ? textToBlockHex(fields.plaintext.text, 16)
+      : normalizeHex(fields.plaintext.hex);
+
+  if (fields.plaintext.mode === "hex" && !isValidHexBlock(fields.plaintext.hex, 16)) {
+    fieldErrors.plaintext = "Needs exactly 32 hex digits (0-9, A-F).";
+  }
+
+  if (!isValidHexBlock(fields.keyHex, 16)) {
+    fieldErrors.key = "Needs exactly 32 hex digits (0-9, A-F).";
+  }
+
+  if (fieldErrors.plaintext || fieldErrors.key) {
+    return { ok: false, message: "Fix the highlighted inputs", fieldErrors };
+  }
+
+  return { ok: true, plaintextHex, keyHex: normalizeHex(fields.keyHex) };
 }
 
 function usePrefersReducedMotion() {
@@ -179,6 +250,8 @@ function RoundSelector({
 }
 
 function InitialRound() {
+  const aesTrace = useTrace();
+
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -309,6 +382,7 @@ function RoundDetail({ round }: { round: AesRoundTrace }) {
 }
 
 function TransformationMap({ activeStep }: { activeStep: number }) {
+  const aesTrace = useTrace();
   const items = [
     ["Plaintext", aesTrace.plaintextHex],
     ["Key XOR", aesTrace.afterInitialAddRoundKeyHex],
@@ -355,6 +429,7 @@ function TransformationMap({ activeStep }: { activeStep: number }) {
 }
 
 function KeySchedulePanel({ activeStep, onSelect }: { activeStep: number; onSelect: (step: number) => void }) {
+  const aesTrace = useTrace();
   const rows = useMemo(
     () =>
       aesTrace.roundKeysHex.map((roundKey, round) => ({
@@ -363,7 +438,7 @@ function KeySchedulePanel({ activeStep, onSelect }: { activeStep: number; onSele
         words: aesTrace.expandedWordsHex.slice(round * 4, round * 4 + 4),
         use: round === 0 ? "Initial AddRoundKey" : round === 10 ? "Final AddRoundKey" : `Round ${round} AddRoundKey`,
       })),
-    [],
+    [aesTrace],
   );
 
   return (
@@ -484,32 +559,39 @@ function DecryptionNote() {
 }
 
 function FinalCheck() {
-  const passed = aesTrace.ciphertextHex === aesTrace.expectedCiphertextHex;
+  const aesTrace = useTrace();
+  const knownVector = aesTrace.expectedCiphertextHex;
+  const passed = knownVector !== null && aesTrace.ciphertextHex === knownVector;
 
   return (
     <section className="rounded-lg bg-neutral-950 p-5 text-white">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">
-            Known-answer check
+            {knownVector !== null ? "Known-answer check" : "Live result"}
           </p>
           <h3 className="mt-2 text-2xl font-black">
-            AES-128 trace produces the expected ciphertext
+            {knownVector !== null
+              ? "AES-128 trace produces the expected ciphertext"
+              : "AES-128 ciphertext for your block and key"}
           </h3>
           <p className="mt-3 max-w-3xl leading-7 text-neutral-300">
-            The module uses a standard AES-128 educational test vector so students can
-            connect every matrix step to a verifiable final result.
+            {knownVector !== null
+              ? "The default input is a standard AES-128 educational test vector so students can connect every matrix step to a verifiable final result."
+              : "Known-answer vectors only exist for the standard FIPS-197 input — this is the live result computed from your block and key."}
           </p>
         </div>
-        <span
-          className={cx(
-            "inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-bold",
-            passed ? "bg-emerald-300 text-neutral-950" : "bg-amber-200 text-amber-950",
-          )}
-        >
-          <CheckCircle2 aria-hidden="true" size={17} />
-          {passed ? "Verified" : "Mismatch"}
-        </span>
+        {knownVector !== null ? (
+          <span
+            className={cx(
+              "inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-bold",
+              passed ? "bg-emerald-300 text-neutral-950" : "bg-amber-200 text-amber-950",
+            )}
+          >
+            <CheckCircle2 aria-hidden="true" size={17} />
+            {passed ? "Verified" : "Mismatch"}
+          </span>
+        ) : null}
       </div>
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <ValueCard
@@ -518,12 +600,21 @@ function FinalCheck() {
           detail="Output from the local AES-128 trace implementation."
           tone="dark"
         />
-        <ValueCard
-          label="Expected ciphertext"
-          value={aesTrace.expectedCiphertextHex}
-          detail="Known ciphertext for this plaintext and key."
-          tone="accent"
-        />
+        {knownVector !== null ? (
+          <ValueCard
+            label="Expected ciphertext"
+            value={knownVector}
+            detail="Known ciphertext for this plaintext and key."
+            tone="accent"
+          />
+        ) : (
+          <ValueCard
+            label="Input block"
+            value={aesTrace.plaintextHex}
+            detail="The 128-bit block this ciphertext was computed from."
+            tone="accent"
+          />
+        )}
       </div>
     </section>
   );
@@ -533,6 +624,39 @@ export function AesWalkthrough() {
   const reducedMotion = usePrefersReducedMotion();
   const [activeStep, setActiveStep] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [fields, setFields] = useState(AES_DEFAULT_FIELDS);
+  const lastGoodTrace = useRef(defaultAesTrace);
+  const { aesTrace, inputError, fieldErrors } = useMemo(() => {
+    const parsed = parseAesFields(fields);
+
+    if (!parsed.ok) {
+      return {
+        aesTrace: lastGoodTrace.current,
+        inputError: parsed.message,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    try {
+      return {
+        aesTrace: createAes128Trace(parsed.plaintextHex, parsed.keyHex),
+        inputError: null,
+        fieldErrors: {} as AesFieldErrors,
+      };
+    } catch (caught) {
+      return {
+        aesTrace: lastGoodTrace.current,
+        inputError: caught instanceof Error ? caught.message : String(caught),
+        fieldErrors: {} as AesFieldErrors,
+      };
+    }
+  }, [fields]);
+
+  useEffect(() => {
+    if (!inputError) {
+      lastGoodTrace.current = aesTrace;
+    }
+  }, [aesTrace, inputError]);
 
   const activeRound = activeStep === 0 ? null : aesTrace.rounds[activeStep - 1];
 
@@ -564,6 +688,7 @@ export function AesWalkthrough() {
   );
 
   return (
+    <AesTraceContext.Provider value={aesTrace}>
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
       <section className="overflow-hidden rounded-lg bg-neutral-950 text-white">
         <div className="grid gap-6 p-5 lg:grid-cols-[1fr_340px]">
@@ -603,6 +728,32 @@ export function AesWalkthrough() {
         </div>
       </section>
 
+      <TraceInputsPanel
+        title="Try your own block and key"
+        description="Every state matrix, round key, and round below recomputes from these values."
+        error={inputError}
+      >
+        <div className="grid gap-5 lg:grid-cols-2">
+          <TextOrHexField
+            label="Plaintext block"
+            value={fields.plaintext}
+            onChange={(plaintext) => setFields((current) => ({ ...current, plaintext }))}
+            byteLength={16}
+            error={fieldErrors.plaintext}
+          />
+          <HexKeyField
+            label="128-bit key"
+            value={fields.keyHex}
+            onChange={(keyHex) => setFields((current) => ({ ...current, keyHex }))}
+            byteLength={16}
+            onGenerate={() =>
+              setFields((current) => ({ ...current, keyHex: randomHex(16) }))
+            }
+            error={fieldErrors.key}
+          />
+        </div>
+      </TraceInputsPanel>
+
       <FormulaStrip />
 
       <RoundSelector activeStep={activeStep} onSelect={setActiveStep} />
@@ -631,5 +782,6 @@ export function AesWalkthrough() {
         title="AES-128"
       />
     </section>
+    </AesTraceContext.Provider>
   );
 }

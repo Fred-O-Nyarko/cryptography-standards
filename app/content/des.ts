@@ -37,7 +37,7 @@ export type DesOperationTrace = {
 export type DesTrace = {
   plaintextHex: string;
   keyHex: string;
-  expectedCiphertextHex: string;
+  expectedCiphertextHex: string | null;
   plaintextBits: string;
   keyBits: string;
   keyWithoutParity: string;
@@ -300,7 +300,7 @@ export function createDesOperationTrace(
 export function createDesTrace(
   plaintextHex: string,
   keyHex: string,
-  expectedCiphertextHex = "85E813540F0AB405",
+  expectedCiphertextHex: string | null = null,
 ): DesTrace {
   const trace = createDesOperationTrace(plaintextHex, keyHex, "encrypt");
 
@@ -331,7 +331,11 @@ export function desDecryptBlock(ciphertextHex: string, keyHex: string) {
   return createDesOperationTrace(ciphertextHex, keyHex, "decrypt").outputHex;
 }
 
-export const desTrace = createDesTrace("0123456789ABCDEF", "133457799BBCDFF1");
+export const desTrace = createDesTrace(
+  "0123456789ABCDEF",
+  "133457799BBCDFF1",
+  "85E813540F0AB405",
+);
 
 export const desTraceChecks = {
   firstSubkeyHex: "1B02EFFC7072",

@@ -11,7 +11,7 @@ export type AesRoundTrace = {
 export type AesTrace = {
   plaintextHex: string;
   keyHex: string;
-  expectedCiphertextHex: string;
+  expectedCiphertextHex: string | null;
   roundKeysHex: string[];
   expandedWordsHex: string[];
   initialStateHex: string;
@@ -176,9 +176,13 @@ function mixColumns(state: number[]) {
   return mixed;
 }
 
+const FIPS_PLAINTEXT_HEX = "00112233445566778899AABBCCDDEEFF";
+const FIPS_KEY_HEX = "000102030405060708090A0B0C0D0E0F";
+const FIPS_CIPHERTEXT_HEX = "69C4E0D86A7B0430D8CDB78070B4C55A";
+
 export function createAes128Trace(
-  plaintextHex = "00112233445566778899AABBCCDDEEFF",
-  keyHex = "000102030405060708090A0B0C0D0E0F",
+  plaintextHex = FIPS_PLAINTEXT_HEX,
+  keyHex = FIPS_KEY_HEX,
 ): AesTrace {
   const plaintext = hexToBytes(plaintextHex);
   const key = hexToBytes(keyHex);
@@ -211,7 +215,10 @@ export function createAes128Trace(
   return {
     plaintextHex,
     keyHex,
-    expectedCiphertextHex: "69C4E0D86A7B0430D8CDB78070B4C55A",
+    expectedCiphertextHex:
+      plaintextHex === FIPS_PLAINTEXT_HEX && keyHex === FIPS_KEY_HEX
+        ? FIPS_CIPHERTEXT_HEX
+        : null,
     roundKeysHex: roundKeys.map(bytesToHex),
     expandedWordsHex: expandedWords.map(bytesToHex),
     initialStateHex: bytesToHex(plaintext),

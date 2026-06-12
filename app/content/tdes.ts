@@ -5,6 +5,7 @@ import {
   type DesOperationMode,
   type DesOperationTrace,
 } from "./des";
+import { hexBlockToText } from "./trace-inputs";
 
 export type TdesStage = {
   id: string;
@@ -62,11 +63,13 @@ function createStage({
   };
 }
 
-function createTdesTrace(): TdesTrace {
-  const plaintextHex = "4E6F772069732074";
-  const key1 = "0123456789ABCDEF";
-  const key2 = "23456789ABCDEF01";
-  const key3 = "456789ABCDEF0123";
+export function createTdesTrace(
+  plaintextHex = "4E6F772069732074",
+  key1 = "0123456789ABCDEF",
+  key2 = "23456789ABCDEF01",
+  key3 = "456789ABCDEF0123",
+): TdesTrace {
+  const plaintextText = hexBlockToText(plaintextHex);
 
   const stage1 = createStage({
     id: "encrypt-k1",
@@ -139,7 +142,10 @@ function createTdesTrace(): TdesTrace {
 
   return {
     plaintextHex,
-    plaintextLabel: '"Now is t" encoded as 8 ASCII bytes',
+    plaintextLabel:
+      plaintextText !== null
+        ? `"${plaintextText}" encoded as 8 ASCII bytes`
+        : "8-byte (64-bit) input block",
     keys: [
       {
         label: "K1",

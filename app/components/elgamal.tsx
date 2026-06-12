@@ -8,11 +8,103 @@ import {
   ShieldCheck,
   UnlockKeyhole,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactNode } from "react";
 
-import { MathExpression, MathOrText, VisualizerDock } from "~/components/learning";
-import { elGamalTrace, type ElGamalModPowStep } from "~/content/elgamal";
+import {
+  GenerateKeysButton,
+  MathExpression,
+  MathOrText,
+  NumberField,
+  TraceInputsPanel,
+  VisualizerDock,
+} from "~/components/learning";
+import {
+  createElGamalTrace,
+  elGamalTrace as defaultElGamalTrace,
+  type ElGamalModPowStep,
+  type ElGamalTrace,
+} from "~/content/elgamal";
+import { randomInt } from "~/content/trace-inputs";
+
+const ElGamalTraceContext = createContext<ElGamalTrace>(defaultElGamalTrace);
+
+function useTrace() {
+  return useContext(ElGamalTraceContext);
+}
+
+type ElGamalFields = {
+  privateKey: string;
+  ephemeralKey: string;
+  message: string;
+  reusedMessage: string;
+};
+
+const ELGAMAL_DEFAULT_FIELDS: ElGamalFields = {
+  privateKey: "6",
+  ephemeralKey: "15",
+  message: "13",
+  reusedMessage: "7",
+};
+
+type ElGamalFieldErrors = {
+  privateKey?: string;
+  ephemeralKey?: string;
+  message?: string;
+  reusedMessage?: string;
+};
+
+function parseIntInRange(raw: string, min: number, max: number) {
+  const value = Number.parseInt(raw, 10);
+
+  if (!/^\d+$/.test(raw.trim()) || Number.isNaN(value) || value < min || value > max) {
+    return null;
+  }
+
+  return value;
+}
+
+function parseElGamalFields(
+  fields: ElGamalFields,
+):
+  | { ok: true; privateKey: number; ephemeralKey: number; message: number; reusedMessage: number }
+  | { ok: false; message: string; fieldErrors: ElGamalFieldErrors } {
+  const fieldErrors: ElGamalFieldErrors = {};
+  const privateKey = parseIntInRange(fields.privateKey, 2, 21);
+  const ephemeralKey = parseIntInRange(fields.ephemeralKey, 2, 21);
+  const message = parseIntInRange(fields.message, 1, 22);
+  const reusedMessage = parseIntInRange(fields.reusedMessage, 1, 22);
+
+  if (privateKey === null) {
+    fieldErrors.privateKey = "Whole number between 2 and 21.";
+  }
+
+  if (ephemeralKey === null) {
+    fieldErrors.ephemeralKey = "Whole number between 2 and 21.";
+  }
+
+  if (message === null) {
+    fieldErrors.message = "Whole number between 1 and 22.";
+  }
+
+  if (reusedMessage === null) {
+    fieldErrors.reusedMessage = "Whole number between 1 and 22.";
+  }
+
+  if (privateKey === null || ephemeralKey === null || message === null || reusedMessage === null) {
+    return { ok: false, message: "Fix the highlighted inputs", fieldErrors };
+  }
+
+  return { ok: true, privateKey, ephemeralKey, message, reusedMessage };
+}
 
 type StageId = "group" | "keygen" | "encrypt" | "decrypt" | "randomness";
 
@@ -160,6 +252,8 @@ function StageSelector({
 }
 
 function ParameterPanel() {
+  const elGamalTrace = useTrace();
+
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -281,6 +375,7 @@ function StepListPanel({
 }
 
 function ModPowTable({ steps, baseLabel }: { steps: ElGamalModPowStep[]; baseLabel: string }) {
+  const elGamalTrace = useTrace();
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse text-left text-sm">
@@ -335,6 +430,8 @@ function ModPowTable({ steps, baseLabel }: { steps: ElGamalModPowStep[]; baseLab
 }
 
 function KeyGenerationPanel() {
+  const elGamalTrace = useTrace();
+
   return (
     <section className="grid gap-6">
       <StepListPanel
@@ -363,6 +460,8 @@ function KeyGenerationPanel() {
 }
 
 function EncryptionPanel() {
+  const elGamalTrace = useTrace();
+
   return (
     <section className="grid gap-6">
       <StepListPanel
@@ -394,6 +493,8 @@ function EncryptionPanel() {
 }
 
 function DecryptionPanel() {
+  const elGamalTrace = useTrace();
+
   return (
     <section className="grid gap-6">
       <StepListPanel
@@ -425,6 +526,7 @@ function DecryptionPanel() {
 }
 
 function RandomnessPanel() {
+  const elGamalTrace = useTrace();
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -475,6 +577,7 @@ function ActiveStage({ activeStage }: { activeStage: StageId }) {
 }
 
 function ResultCheck() {
+  const elGamalTrace = useTrace();
   const passed = elGamalTrace.decryptedMessage === elGamalTrace.message;
 
   return (
@@ -529,6 +632,45 @@ export function ElGamalWalkthrough() {
   const reducedMotion = usePrefersReducedMotion();
   const [activeStage, setActiveStage] = useState<StageId>("group");
   const [playing, setPlaying] = useState(false);
+  const [fields, setFields] = useState(ELGAMAL_DEFAULT_FIELDS);
+  const lastGoodTrace = useRef(defaultElGamalTrace);
+  const { elGamalTrace, inputError, fieldErrors } = useMemo(() => {
+    const parsed = parseElGamalFields(fields);
+
+    if (!parsed.ok) {
+      return {
+        elGamalTrace: lastGoodTrace.current,
+        inputError: parsed.message,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    try {
+      return {
+        elGamalTrace: createElGamalTrace(
+          parsed.privateKey,
+          parsed.ephemeralKey,
+          parsed.message,
+          parsed.reusedMessage,
+        ),
+        inputError: null,
+        fieldErrors: {} as ElGamalFieldErrors,
+      };
+    } catch (caught) {
+      return {
+        elGamalTrace: lastGoodTrace.current,
+        inputError: caught instanceof Error ? caught.message : String(caught),
+        fieldErrors: {} as ElGamalFieldErrors,
+      };
+    }
+  }, [fields]);
+
+  useEffect(() => {
+    if (!inputError) {
+      lastGoodTrace.current = elGamalTrace;
+    }
+  }, [elGamalTrace, inputError]);
+
   const activeIndex = useMemo(
     () => stages.findIndex((stage) => stage.id === activeStage),
     [activeStage],
@@ -561,6 +703,7 @@ export function ElGamalWalkthrough() {
   );
 
   return (
+    <ElGamalTraceContext.Provider value={elGamalTrace}>
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
       <section className="overflow-hidden rounded-lg bg-neutral-950 text-white">
         <div className="grid gap-6 p-5 lg:grid-cols-[1fr_340px]">
@@ -599,6 +742,63 @@ export function ElGamalWalkthrough() {
           </div>
         </div>
       </section>
+
+      <TraceInputsPanel
+        title="Pick your secrets and message"
+        description="The group p=23, g=5 stays fixed so every value fits on screen. Everything else recomputes from these numbers."
+        error={inputError}
+        footer={
+          <GenerateKeysButton
+            onClick={() =>
+              setFields((current) => ({
+                ...current,
+                privateKey: String(randomInt(2, 21)),
+                ephemeralKey: String(randomInt(2, 21)),
+              }))
+            }
+          >
+            Randomize secrets
+          </GenerateKeysButton>
+        }
+      >
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+          <NumberField
+            label="Private key x"
+            value={fields.privateKey}
+            onChange={(privateKey) => setFields((current) => ({ ...current, privateKey }))}
+            min={2}
+            max={21}
+            helpText="Stays secret"
+            error={fieldErrors.privateKey}
+          />
+          <NumberField
+            label="Ephemeral key k"
+            value={fields.ephemeralKey}
+            onChange={(ephemeralKey) => setFields((current) => ({ ...current, ephemeralKey }))}
+            min={2}
+            max={21}
+            helpText="Fresh per encryption"
+            error={fieldErrors.ephemeralKey}
+          />
+          <NumberField
+            label="Message m"
+            value={fields.message}
+            onChange={(message) => setFields((current) => ({ ...current, message }))}
+            min={1}
+            max={22}
+            error={fieldErrors.message}
+          />
+          <NumberField
+            label="Second message m′"
+            value={fields.reusedMessage}
+            onChange={(reusedMessage) => setFields((current) => ({ ...current, reusedMessage }))}
+            min={1}
+            max={22}
+            helpText="Used in the reused-k demo"
+            error={fieldErrors.reusedMessage}
+          />
+        </div>
+      </TraceInputsPanel>
 
       <FormulaStrip />
 
@@ -655,5 +855,6 @@ export function ElGamalWalkthrough() {
         title="ElGamal"
       />
     </section>
+    </ElGamalTraceContext.Provider>
   );
 }

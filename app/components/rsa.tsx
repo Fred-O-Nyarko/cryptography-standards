@@ -8,10 +8,37 @@ import {
   ShieldCheck,
   UnlockKeyhole,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
-import { MathExpression, MathOrText, VisualizerDock } from "~/components/learning";
-import { rsaTrace, type RsaModPowStep } from "~/content/rsa";
+import {
+  GenerateKeysButton,
+  LetterField,
+  MathExpression,
+  MathOrText,
+  SelectField,
+  TraceInputsPanel,
+  VisualizerDock,
+} from "~/components/learning";
+import {
+  createRsaTrace,
+  rsaTrace as defaultRsaTrace,
+  type RsaModPowStep,
+  type RsaTrace,
+} from "~/content/rsa";
+import {
+  gcd,
+  pickRsaParams,
+  RSA_E_CHOICES,
+  RSA_PRIME_CHOICES,
+} from "~/content/trace-inputs";
 
 type StageId = "keygen" | "inverse" | "encrypt" | "decrypt" | "safety";
 
@@ -55,6 +82,58 @@ const stages: Array<{
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+const RsaTraceContext = createContext<RsaTrace>(defaultRsaTrace);
+
+function useTrace() {
+  return useContext(RsaTraceContext);
+}
+
+type RsaFields = {
+  p: string;
+  q: string;
+  e: string;
+  letter: string;
+};
+
+const RSA_DEFAULT_FIELDS: RsaFields = {
+  p: "61",
+  q: "53",
+  e: "17",
+  letter: "A",
+};
+
+type RsaFieldErrors = { q?: string; e?: string; letter?: string };
+
+function parseRsaFields(
+  fields: RsaFields,
+):
+  | { ok: true; p: number; q: number; e: number; message: number }
+  | { ok: false; message: string; fieldErrors: RsaFieldErrors } {
+  const fieldErrors: RsaFieldErrors = {};
+  const p = Number.parseInt(fields.p, 10);
+  const q = Number.parseInt(fields.q, 10);
+  const e = Number.parseInt(fields.e, 10);
+  const phi = (p - 1) * (q - 1);
+
+  if (p === q) {
+    fieldErrors.q = "Choose two different primes.";
+  }
+
+  if (p !== q && (gcd(e, phi) !== 1 || e >= phi)) {
+    fieldErrors.e = `e shares a factor with φ(n) = ${phi} — pick another e or regenerate.`;
+  }
+
+  if (!/^[A-Za-z]$/.test(fields.letter)) {
+    fieldErrors.letter = "Enter a single letter A–Z or a–z.";
+  }
+
+  if (fieldErrors.q || fieldErrors.e || fieldErrors.letter) {
+    return { ok: false, message: "Fix the highlighted inputs", fieldErrors };
+  }
+
+  return { ok: true, p, q, e, message: fields.letter.charCodeAt(0) };
 }
 
 function usePrefersReducedMotion() {
@@ -159,6 +238,8 @@ function StageSelector({
 }
 
 function KeyMaterialPanel() {
+  const rsaTrace = useTrace();
+
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -202,6 +283,8 @@ function KeyMaterialPanel() {
 }
 
 function KeyGenerationPanel() {
+  const rsaTrace = useTrace();
+
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -253,6 +336,7 @@ function KeyGenerationPanel() {
 }
 
 function InversePanel() {
+  const rsaTrace = useTrace();
   const inverseRow =
     rsaTrace.inverseSteps.find((step) => step.remainderAfter === 1) ??
     rsaTrace.inverseSteps[rsaTrace.inverseSteps.length - 1];
@@ -333,6 +417,7 @@ function InversePanel() {
 }
 
 function ModPowTable({ steps }: { steps: RsaModPowStep[] }) {
+  const rsaTrace = useTrace();
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse text-left text-sm">
@@ -387,6 +472,7 @@ function ModPowTable({ steps }: { steps: RsaModPowStep[] }) {
 }
 
 function ModPowPanel({ mode }: { mode: "encrypt" | "decrypt" }) {
+  const rsaTrace = useTrace();
   const encrypt = mode === "encrypt";
   const steps = encrypt ? rsaTrace.encryptionSteps : rsaTrace.decryptionSteps;
   const input = encrypt ? rsaTrace.message : rsaTrace.ciphertext;
@@ -508,6 +594,7 @@ function ActiveStage({ activeStage }: { activeStage: StageId }) {
 }
 
 function ResultCheck() {
+  const rsaTrace = useTrace();
   const passed = rsaTrace.decrypted === rsaTrace.message;
 
   return (
@@ -562,6 +649,40 @@ export function RsaWalkthrough() {
   const reducedMotion = usePrefersReducedMotion();
   const [activeStage, setActiveStage] = useState<StageId>("keygen");
   const [playing, setPlaying] = useState(false);
+  const [fields, setFields] = useState(RSA_DEFAULT_FIELDS);
+  const lastGoodTrace = useRef(defaultRsaTrace);
+  const { rsaTrace, inputError, fieldErrors } = useMemo(() => {
+    const parsed = parseRsaFields(fields);
+
+    if (!parsed.ok) {
+      return {
+        rsaTrace: lastGoodTrace.current,
+        inputError: parsed.message,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    try {
+      return {
+        rsaTrace: createRsaTrace(parsed.p, parsed.q, parsed.e, parsed.message),
+        inputError: null,
+        fieldErrors: {} as RsaFieldErrors,
+      };
+    } catch (caught) {
+      return {
+        rsaTrace: lastGoodTrace.current,
+        inputError: caught instanceof Error ? caught.message : String(caught),
+        fieldErrors: {} as RsaFieldErrors,
+      };
+    }
+  }, [fields]);
+
+  useEffect(() => {
+    if (!inputError) {
+      lastGoodTrace.current = rsaTrace;
+    }
+  }, [rsaTrace, inputError]);
+
   const activeIndex = useMemo(
     () => stages.findIndex((stage) => stage.id === activeStage),
     [activeStage],
@@ -594,6 +715,7 @@ export function RsaWalkthrough() {
   );
 
   return (
+    <RsaTraceContext.Provider value={rsaTrace}>
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
       <section className="overflow-hidden rounded-lg bg-neutral-950 text-white">
         <div className="grid gap-6 p-5 lg:grid-cols-[1fr_340px]">
@@ -632,6 +754,76 @@ export function RsaWalkthrough() {
           </div>
         </div>
       </section>
+
+      <TraceInputsPanel
+        title="Pick your primes and message"
+        description="The key pair, every modular-exponentiation table, and the result below recompute from these values."
+        error={inputError}
+        footer={
+          <GenerateKeysButton
+            onClick={() => {
+              const params = pickRsaParams();
+              setFields((current) => ({
+                ...current,
+                p: String(params.p),
+                q: String(params.q),
+                e: String(params.e),
+              }));
+            }}
+          >
+            Generate key pair
+          </GenerateKeysButton>
+        }
+      >
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+          <SelectField
+            label="Prime p"
+            value={fields.p}
+            onChange={(p) => setFields((current) => ({ ...current, p }))}
+            options={RSA_PRIME_CHOICES.map((prime) => ({
+              value: String(prime),
+              label: String(prime),
+            }))}
+            helpText="Stays private"
+          />
+          <div>
+            <SelectField
+              label="Prime q"
+              value={fields.q}
+              onChange={(q) => setFields((current) => ({ ...current, q }))}
+              options={RSA_PRIME_CHOICES.map((prime) => ({
+                value: String(prime),
+                label: String(prime),
+              }))}
+              helpText="Stays private, must differ from p"
+            />
+            {fieldErrors.q ? (
+              <p className="mt-2 text-sm font-bold text-red-900">{fieldErrors.q}</p>
+            ) : null}
+          </div>
+          <div>
+            <SelectField
+              label="Public exponent e"
+              value={fields.e}
+              onChange={(e) => setFields((current) => ({ ...current, e }))}
+              options={RSA_E_CHOICES.map((exponent) => ({
+                value: String(exponent),
+                label: String(exponent),
+              }))}
+              helpText="Must be coprime to φ(n)"
+            />
+            {fieldErrors.e ? (
+              <p className="mt-2 text-sm font-bold text-red-900">{fieldErrors.e}</p>
+            ) : null}
+          </div>
+          <LetterField
+            label="Message letter"
+            value={fields.letter}
+            onChange={(letter) => setFields((current) => ({ ...current, letter }))}
+            error={fieldErrors.letter}
+          />
+        </div>
+      </TraceInputsPanel>
 
       <FormulaStrip />
 
@@ -690,5 +882,6 @@ export function RsaWalkthrough() {
         title="RSA"
       />
     </section>
+    </RsaTraceContext.Provider>
   );
 }

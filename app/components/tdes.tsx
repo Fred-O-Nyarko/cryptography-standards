@@ -6,14 +6,112 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
-import { MathExpression, VisualizerDock } from "~/components/learning";
+import {
+  GenerateKeysButton,
+  HexKeyField,
+  MathExpression,
+  TextOrHexField,
+  type TextOrHexValue,
+  TraceInputsPanel,
+  VisualizerDock,
+} from "~/components/learning";
 import { bitsToHex, groupBits, hexToBits } from "~/content/des";
-import { tdesTrace, type TdesStage } from "~/content/tdes";
+import {
+  createTdesTrace,
+  tdesTrace as defaultTdesTrace,
+  type TdesStage,
+  type TdesTrace,
+} from "~/content/tdes";
+import {
+  isValidHexBlock,
+  normalizeHex,
+  randomHex,
+  textToBlockHex,
+} from "~/content/trace-inputs";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+const TdesTraceContext = createContext<TdesTrace>(defaultTdesTrace);
+
+function useTrace() {
+  return useContext(TdesTraceContext);
+}
+
+type TdesFields = {
+  plaintext: TextOrHexValue;
+  key1Hex: string;
+  key2Hex: string;
+  key3Hex: string;
+};
+
+const TDES_DEFAULT_FIELDS: TdesFields = {
+  plaintext: { mode: "text", text: "Now is t", hex: defaultTdesTrace.plaintextHex },
+  key1Hex: "0123456789ABCDEF",
+  key2Hex: "23456789ABCDEF01",
+  key3Hex: "456789ABCDEF0123",
+};
+
+type TdesFieldErrors = {
+  plaintext?: string;
+  key1?: string;
+  key2?: string;
+  key3?: string;
+};
+
+function parseTdesFields(
+  fields: TdesFields,
+):
+  | { ok: true; plaintextHex: string; key1Hex: string; key2Hex: string; key3Hex: string }
+  | { ok: false; message: string; fieldErrors: TdesFieldErrors } {
+  const fieldErrors: TdesFieldErrors = {};
+  const plaintextHex =
+    fields.plaintext.mode === "text"
+      ? textToBlockHex(fields.plaintext.text, 8)
+      : normalizeHex(fields.plaintext.hex);
+
+  if (fields.plaintext.mode === "hex" && !isValidHexBlock(fields.plaintext.hex, 8)) {
+    fieldErrors.plaintext = "Needs exactly 16 hex digits (0-9, A-F).";
+  }
+
+  (["key1", "key2", "key3"] as const).forEach((key) => {
+    if (!isValidHexBlock(fields[`${key}Hex`], 8)) {
+      fieldErrors[key] = "Needs exactly 16 hex digits (0-9, A-F).";
+    }
+  });
+
+  if (fieldErrors.plaintext || fieldErrors.key1 || fieldErrors.key2 || fieldErrors.key3) {
+    return { ok: false, message: "Fix the highlighted inputs", fieldErrors };
+  }
+
+  return {
+    ok: true,
+    plaintextHex,
+    key1Hex: normalizeHex(fields.key1Hex),
+    key2Hex: normalizeHex(fields.key2Hex),
+    key3Hex: normalizeHex(fields.key3Hex),
+  };
+}
+
+function randomDistinctKeys(): [string, string, string] {
+  const keys = new Set<string>();
+
+  while (keys.size < 3) {
+    keys.add(randomHex(8));
+  }
+
+  return [...keys] as [string, string, string];
 }
 
 function usePrefersReducedMotion() {
@@ -250,6 +348,8 @@ function KeyingOptions() {
 }
 
 function DecryptionPath() {
+  const tdesTrace = useTrace();
+
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -286,6 +386,7 @@ function DecryptionPath() {
 }
 
 function CompatibilityDemo() {
+  const tdesTrace = useTrace();
   const demo = tdesTrace.compatibilityDemo;
   const matches = demo.desCiphertextHex === demo.tdesWithEqualKeysHex;
 
@@ -305,7 +406,8 @@ function CompatibilityDemo() {
       <p className="mt-4 leading-7 text-neutral-700">
         If K1, K2, and K3 are the same key, the middle decryption cancels the first
         encryption and the final encryption leaves exactly one DES encryption. That
-        made EDE compatible with old single-DES systems.
+        made EDE compatible with old single-DES systems. This demonstration uses a
+        fixed key and block, independent of your inputs above.
       </p>
       <div className="mt-5 grid gap-4 md:grid-cols-3">
         <ValueCard label="Plaintext" value={demo.plaintextHex} detail="The DES compatibility test block." />
@@ -324,14 +426,54 @@ export function TdesWalkthrough() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
+  const [fields, setFields] = useState(TDES_DEFAULT_FIELDS);
+  const lastGoodTrace = useRef(defaultTdesTrace);
+  const { tdesTrace, inputError, fieldErrors } = useMemo(() => {
+    const parsed = parseTdesFields(fields);
+
+    if (!parsed.ok) {
+      return {
+        tdesTrace: lastGoodTrace.current,
+        inputError: parsed.message,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    try {
+      return {
+        tdesTrace: createTdesTrace(
+          parsed.plaintextHex,
+          parsed.key1Hex,
+          parsed.key2Hex,
+          parsed.key3Hex,
+        ),
+        inputError: null,
+        fieldErrors: {} as TdesFieldErrors,
+      };
+    } catch (caught) {
+      return {
+        tdesTrace: lastGoodTrace.current,
+        inputError: caught instanceof Error ? caught.message : String(caught),
+        fieldErrors: {} as TdesFieldErrors,
+      };
+    }
+  }, [fields]);
+
+  useEffect(() => {
+    if (!inputError) {
+      lastGoodTrace.current = tdesTrace;
+    }
+  }, [tdesTrace, inputError]);
+
   const activeStage = tdesTrace.stages[activeIndex];
+  const roundTripPassed = tdesTrace.decryptedPlaintextHex === tdesTrace.plaintextHex;
   const dockSteps = useMemo(
     () =>
       tdesTrace.stages.map((stage) => ({
         id: stage.id,
         label: `${stage.operation === "encrypt" ? "Encrypt" : "Decrypt"} with ${stage.keyLabel}`,
       })),
-    [],
+    [tdesTrace],
   );
 
   useEffect(() => {
@@ -344,9 +486,10 @@ export function TdesWalkthrough() {
     }, 1700);
 
     return () => window.clearTimeout(timer);
-  }, [activeIndex, isPlaying, reducedMotion]);
+  }, [activeIndex, isPlaying, reducedMotion, tdesTrace.stages.length]);
 
   return (
+    <TdesTraceContext.Provider value={tdesTrace}>
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
       <div className="rounded-lg border border-neutral-900/10 bg-neutral-950 p-5 text-white">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
@@ -400,6 +543,53 @@ export function TdesWalkthrough() {
         </div>
       </div>
 
+      <TraceInputsPanel
+        title="Try your own block and key bundle"
+        description="All three EDE stages and the reverse decryption path recompute from these values."
+        error={inputError}
+        footer={
+          <GenerateKeysButton
+            onClick={() => {
+              const [key1Hex, key2Hex, key3Hex] = randomDistinctKeys();
+              setFields((current) => ({ ...current, key1Hex, key2Hex, key3Hex }));
+            }}
+          >
+            Generate key bundle
+          </GenerateKeysButton>
+        }
+      >
+        <div className="grid gap-5 lg:grid-cols-2">
+          <TextOrHexField
+            label="Plaintext block"
+            value={fields.plaintext}
+            onChange={(plaintext) => setFields((current) => ({ ...current, plaintext }))}
+            byteLength={8}
+            error={fieldErrors.plaintext}
+          />
+          <HexKeyField
+            label="K1"
+            value={fields.key1Hex}
+            onChange={(key1Hex) => setFields((current) => ({ ...current, key1Hex }))}
+            byteLength={8}
+            error={fieldErrors.key1}
+          />
+          <HexKeyField
+            label="K2"
+            value={fields.key2Hex}
+            onChange={(key2Hex) => setFields((current) => ({ ...current, key2Hex }))}
+            byteLength={8}
+            error={fieldErrors.key2}
+          />
+          <HexKeyField
+            label="K3"
+            value={fields.key3Hex}
+            onChange={(key3Hex) => setFields((current) => ({ ...current, key3Hex }))}
+            byteLength={8}
+            error={fieldErrors.key3}
+          />
+        </div>
+      </TraceInputsPanel>
+
       <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
           EDE formula
@@ -449,19 +639,38 @@ export function TdesWalkthrough() {
 
       <CompatibilityDemo />
 
-      <section className="rounded-lg border border-neutral-900/10 bg-emerald-100 p-5">
+      <section
+        className={cx(
+          "rounded-lg border border-neutral-900/10 p-5",
+          roundTripPassed ? "bg-emerald-100" : "bg-amber-100",
+        )}
+      >
         <div className="flex items-center gap-3">
-          <CheckCircle2 aria-hidden="true" className="text-emerald-900" size={22} />
+          <CheckCircle2
+            aria-hidden="true"
+            className={roundTripPassed ? "text-emerald-900" : "text-amber-900"}
+            size={22}
+          />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-900">
+            <p
+              className={cx(
+                "text-xs font-semibold uppercase tracking-[0.16em]",
+                roundTripPassed ? "text-emerald-900" : "text-amber-900",
+              )}
+            >
               Algorithm check
             </p>
-            <h3 className="text-xl font-bold text-neutral-950">The reverse path recovers the original block</h3>
+            <h3 className="text-xl font-bold text-neutral-950">
+              {roundTripPassed
+                ? "The reverse path recovers the original block"
+                : "The reverse path did not recover the original block"}
+            </h3>
           </div>
         </div>
         <p className="mt-4 leading-7 text-neutral-800">
           The computed ciphertext is <code>{tdesTrace.ciphertextHex}</code>, and the reverse
-          D-E-D path recovers <code>{tdesTrace.decryptedPlaintextHex}</code>.
+          D-E-D path recovers <code>{tdesTrace.decryptedPlaintextHex}</code>
+          {roundTripPassed ? ", matching your plaintext exactly." : "."}
         </p>
       </section>
 
@@ -479,5 +688,6 @@ export function TdesWalkthrough() {
         title="3DES"
       />
     </section>
+    </TdesTraceContext.Provider>
   );
 }

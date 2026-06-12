@@ -143,19 +143,19 @@ function modPow(base: number, exponent: number, modulus: number) {
   };
 }
 
-export function createRsaTrace(): RsaTrace {
-  const p = 61;
-  const q = 53;
+export function createRsaTrace(p = 61, q = 53, e = 17, message = 65): RsaTrace {
   const n = p * q;
   const phi = (p - 1) * (q - 1);
-  const e = 17;
 
   if (gcd(e, phi) !== 1) {
     throw new Error("RSA public exponent must be coprime to phi(n).");
   }
 
+  if (message >= n) {
+    throw new Error("RSA message must be smaller than the modulus n.");
+  }
+
   const { inverse: d, steps: inverseSteps } = extendedEuclidSteps(e, phi);
-  const message = 65;
   const encryption = modPow(message, e, n);
   const ciphertext = encryption.result;
   const decryption = modPow(ciphertext, d, n);
@@ -178,7 +178,7 @@ export function createRsaTrace(): RsaTrace {
       {
         id: "choose-primes",
         label: "Choose two primes",
-        formula: "p=61,\\quad q=53",
+        formula: `p=${p},\\quad q=${q}`,
         value: "p and q stay private",
         explanation:
           "Real RSA uses large random primes. These small primes are only for classroom arithmetic.",

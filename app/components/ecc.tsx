@@ -7,16 +7,97 @@ import {
   ShieldCheck,
   Waypoints,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactNode } from "react";
 
 import {
-  eccTrace,
+  createEccTrace,
+  eccTrace as defaultEccTrace,
   formatPoint,
+  type EccTrace,
   type EcPoint,
   type EccScalarStep,
 } from "~/content/ecc";
-import { MathExpression, MathOrText, VisualizerDock } from "~/components/learning";
+import {
+  GenerateKeysButton,
+  MathExpression,
+  MathOrText,
+  NumberField,
+  TraceInputsPanel,
+  VisualizerDock,
+} from "~/components/learning";
+import { randomInt } from "~/content/trace-inputs";
+
+const EccTraceContext = createContext<EccTrace>(defaultEccTrace);
+
+function useTrace() {
+  return useContext(EccTraceContext);
+}
+
+type EccFields = {
+  alicePrivate: string;
+  bobPrivate: string;
+  message: string;
+};
+
+const ECC_DEFAULT_FIELDS: EccFields = {
+  alicePrivate: "7",
+  bobPrivate: "9",
+  message: "12",
+};
+
+type EccFieldErrors = {
+  alicePrivate?: string;
+  bobPrivate?: string;
+  message?: string;
+};
+
+function parseEccIntInRange(raw: string, min: number, max: number) {
+  const value = Number.parseInt(raw, 10);
+
+  if (!/^\d+$/.test(raw.trim()) || Number.isNaN(value) || value < min || value > max) {
+    return null;
+  }
+
+  return value;
+}
+
+function parseEccFields(
+  fields: EccFields,
+):
+  | { ok: true; alicePrivate: number; bobPrivate: number; message: number }
+  | { ok: false; message: string; fieldErrors: EccFieldErrors } {
+  const fieldErrors: EccFieldErrors = {};
+  const alicePrivate = parseEccIntInRange(fields.alicePrivate, 1, 18);
+  const bobPrivate = parseEccIntInRange(fields.bobPrivate, 1, 18);
+  const message = parseEccIntInRange(fields.message, 0, 16);
+
+  if (alicePrivate === null) {
+    fieldErrors.alicePrivate = "Whole number between 1 and 18.";
+  }
+
+  if (bobPrivate === null) {
+    fieldErrors.bobPrivate = "Whole number between 1 and 18.";
+  }
+
+  if (message === null) {
+    fieldErrors.message = "Whole number between 0 and 16.";
+  }
+
+  if (alicePrivate === null || bobPrivate === null || message === null) {
+    return { ok: false, message: "Fix the highlighted inputs", fieldErrors };
+  }
+
+  return { ok: true, alicePrivate, bobPrivate, message };
+}
 
 type StageId = "curve" | "point-math" | "keygen" | "ecdh" | "toy-mask";
 
@@ -194,6 +275,7 @@ function SvgPointLabel({ label, x, y }: { label: string; x: number; y: number })
 }
 
 function CurvePlot({ activePoints }: { activePoints: EcPoint[] }) {
+  const eccTrace = useTrace();
   const size = 320;
   const padding = 24;
   const span = size - padding * 2;
@@ -402,6 +484,8 @@ function ScalarTable({ steps }: { steps: EccScalarStep[] }) {
 }
 
 function MultiplesPanel() {
+  const eccTrace = useTrace();
+
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -440,6 +524,8 @@ function MultiplesPanel() {
 }
 
 function CurvePanel() {
+  const eccTrace = useTrace();
+
   return (
     <section className="grid gap-6">
       <CurvePlot
@@ -461,9 +547,9 @@ function CurvePanel() {
   );
 }
 
-const pointMathOperations = [eccTrace.doubleExample, eccTrace.addExample];
-
 function PointMathPanel() {
+  const eccTrace = useTrace();
+  const pointMathOperations = [eccTrace.doubleExample, eccTrace.addExample];
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -505,6 +591,8 @@ function PointMathPanel() {
 }
 
 function KeyGenerationPanel() {
+  const eccTrace = useTrace();
+
   return (
     <section className="grid gap-6">
       <StepListPanel
@@ -533,6 +621,8 @@ function KeyGenerationPanel() {
 }
 
 function EcdhPanel() {
+  const eccTrace = useTrace();
+
   return (
     <section className="grid gap-6">
       <StepListPanel
@@ -564,6 +654,7 @@ function EcdhPanel() {
 }
 
 function ToyMaskPanel() {
+  const eccTrace = useTrace();
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -614,6 +705,7 @@ function ActiveStage({ activeStage }: { activeStage: StageId }) {
 }
 
 function ResultCheck() {
+  const eccTrace = useTrace();
   const passed =
     formatPoint(eccTrace.sharedFromAlice) === formatPoint(eccTrace.sharedFromBob) &&
     eccTrace.decryptedMessage === eccTrace.message;
@@ -670,6 +762,40 @@ export function EccWalkthrough() {
   const reducedMotion = usePrefersReducedMotion();
   const [activeStage, setActiveStage] = useState<StageId>("curve");
   const [playing, setPlaying] = useState(false);
+  const [fields, setFields] = useState(ECC_DEFAULT_FIELDS);
+  const lastGoodTrace = useRef(defaultEccTrace);
+  const { eccTrace, inputError, fieldErrors } = useMemo(() => {
+    const parsed = parseEccFields(fields);
+
+    if (!parsed.ok) {
+      return {
+        eccTrace: lastGoodTrace.current,
+        inputError: parsed.message,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    try {
+      return {
+        eccTrace: createEccTrace(parsed.alicePrivate, parsed.bobPrivate, parsed.message),
+        inputError: null,
+        fieldErrors: {} as EccFieldErrors,
+      };
+    } catch (caught) {
+      return {
+        eccTrace: lastGoodTrace.current,
+        inputError: caught instanceof Error ? caught.message : String(caught),
+        fieldErrors: {} as EccFieldErrors,
+      };
+    }
+  }, [fields]);
+
+  useEffect(() => {
+    if (!inputError) {
+      lastGoodTrace.current = eccTrace;
+    }
+  }, [eccTrace, inputError]);
+
   const curveFormula = `y^2=x^3+${eccTrace.a}x+${eccTrace.b}\\pmod{${eccTrace.p}}`;
   const activeIndex = useMemo(
     () => stages.findIndex((stage) => stage.id === activeStage),
@@ -703,6 +829,7 @@ export function EccWalkthrough() {
   );
 
   return (
+    <EccTraceContext.Provider value={eccTrace}>
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
       <section className="overflow-hidden rounded-lg bg-neutral-950 text-white">
         <div className="grid gap-6 p-5 lg:grid-cols-[1fr_340px]">
@@ -740,6 +867,54 @@ export function EccWalkthrough() {
           </div>
         </div>
       </section>
+
+      <TraceInputsPanel
+        title="Pick your scalars and message"
+        description="The curve and base point stay fixed so every point stays visible on the plot. Key points, ECDH, and the toy cipher recompute from these numbers."
+        error={inputError}
+        footer={
+          <GenerateKeysButton
+            onClick={() =>
+              setFields((current) => ({
+                ...current,
+                alicePrivate: String(randomInt(1, 18)),
+                bobPrivate: String(randomInt(1, 18)),
+              }))
+            }
+          >
+            Randomize scalars
+          </GenerateKeysButton>
+        }
+      >
+        <div className="grid gap-5 md:grid-cols-3">
+          <NumberField
+            label="Alice private scalar"
+            value={fields.alicePrivate}
+            onChange={(alicePrivate) => setFields((current) => ({ ...current, alicePrivate }))}
+            min={1}
+            max={18}
+            helpText="19G = O, so 19 is excluded"
+            error={fieldErrors.alicePrivate}
+          />
+          <NumberField
+            label="Bob private scalar"
+            value={fields.bobPrivate}
+            onChange={(bobPrivate) => setFields((current) => ({ ...current, bobPrivate }))}
+            min={1}
+            max={18}
+            error={fieldErrors.bobPrivate}
+          />
+          <NumberField
+            label="Message m"
+            value={fields.message}
+            onChange={(message) => setFields((current) => ({ ...current, message }))}
+            min={0}
+            max={16}
+            helpText="Masked with x(S) mod 17"
+            error={fieldErrors.message}
+          />
+        </div>
+      </TraceInputsPanel>
 
       <FormulaStrip />
 
@@ -796,5 +971,6 @@ export function EccWalkthrough() {
         title="ECC"
       />
     </section>
+    </EccTraceContext.Provider>
   );
 }

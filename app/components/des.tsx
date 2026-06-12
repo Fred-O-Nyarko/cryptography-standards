@@ -5,13 +5,90 @@ import {
   KeyRound,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
-import { MathExpression, VisualizerDock } from "~/components/learning";
-import { bitsToHex, desTrace, groupBits, type DesRoundTrace } from "~/content/des";
+import {
+  HexKeyField,
+  MathExpression,
+  TextOrHexField,
+  type TextOrHexValue,
+  TraceInputsPanel,
+  VisualizerDock,
+} from "~/components/learning";
+import {
+  bitsToHex,
+  createDesTrace,
+  desDecryptBlock,
+  desTrace as defaultDesTrace,
+  groupBits,
+  type DesRoundTrace,
+  type DesTrace,
+} from "~/content/des";
+import {
+  isValidHexBlock,
+  normalizeHex,
+  randomHex,
+  textToBlockHex,
+} from "~/content/trace-inputs";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+const DES_DEFAULT_PLAINTEXT_HEX = "0123456789ABCDEF";
+const DES_DEFAULT_KEY_HEX = "133457799BBCDFF1";
+const DES_KNOWN_VECTOR_HEX = "85E813540F0AB405";
+
+const DesTraceContext = createContext<DesTrace>(defaultDesTrace);
+
+function useTrace() {
+  return useContext(DesTraceContext);
+}
+
+type DesFields = {
+  plaintext: TextOrHexValue;
+  keyHex: string;
+};
+
+const DES_DEFAULT_FIELDS: DesFields = {
+  plaintext: { mode: "hex", text: "", hex: DES_DEFAULT_PLAINTEXT_HEX },
+  keyHex: DES_DEFAULT_KEY_HEX,
+};
+
+type DesFieldErrors = { plaintext?: string; key?: string };
+
+function parseDesFields(
+  fields: DesFields,
+):
+  | { ok: true; plaintextHex: string; keyHex: string }
+  | { ok: false; message: string; fieldErrors: DesFieldErrors } {
+  const fieldErrors: DesFieldErrors = {};
+  const plaintextHex =
+    fields.plaintext.mode === "text"
+      ? textToBlockHex(fields.plaintext.text, 8)
+      : normalizeHex(fields.plaintext.hex);
+
+  if (fields.plaintext.mode === "hex" && !isValidHexBlock(fields.plaintext.hex, 8)) {
+    fieldErrors.plaintext = "Needs exactly 16 hex digits (0-9, A-F).";
+  }
+
+  if (!isValidHexBlock(fields.keyHex, 8)) {
+    fieldErrors.key = "Needs exactly 16 hex digits (0-9, A-F).";
+  }
+
+  if (fieldErrors.plaintext || fieldErrors.key) {
+    return { ok: false, message: "Fix the highlighted inputs", fieldErrors };
+  }
+
+  return { ok: true, plaintextHex, keyHex: normalizeHex(fields.keyHex) };
 }
 
 function usePrefersReducedMotion() {
@@ -227,6 +304,8 @@ function KeyScheduleTable({
   activeRoundIndex: number;
   onSelect: (index: number) => void;
 }) {
+  const desTrace = useTrace();
+
   return (
     <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
       <div className="flex items-center gap-3">
@@ -333,15 +412,61 @@ export function DesWalkthrough() {
   const [activeRoundIndex, setActiveRoundIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
+  const [fields, setFields] = useState(DES_DEFAULT_FIELDS);
+  const lastGoodTrace = useRef(defaultDesTrace);
+  const { desTrace, inputError, fieldErrors } = useMemo(() => {
+    const parsed = parseDesFields(fields);
+
+    if (!parsed.ok) {
+      return {
+        desTrace: lastGoodTrace.current,
+        inputError: parsed.message,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    const expected =
+      parsed.plaintextHex === DES_DEFAULT_PLAINTEXT_HEX && parsed.keyHex === DES_DEFAULT_KEY_HEX
+        ? DES_KNOWN_VECTOR_HEX
+        : null;
+
+    try {
+      return {
+        desTrace: createDesTrace(parsed.plaintextHex, parsed.keyHex, expected),
+        inputError: null,
+        fieldErrors: {} as DesFieldErrors,
+      };
+    } catch (caught) {
+      return {
+        desTrace: lastGoodTrace.current,
+        inputError: caught instanceof Error ? caught.message : String(caught),
+        fieldErrors: {} as DesFieldErrors,
+      };
+    }
+  }, [fields]);
+
+  useEffect(() => {
+    if (!inputError) {
+      lastGoodTrace.current = desTrace;
+    }
+  }, [desTrace, inputError]);
+
   const activeRound = desTrace.rounds[activeRoundIndex];
-  const matchesExpected = desTrace.ciphertextHex === desTrace.expectedCiphertextHex;
+  const matchesExpected = useMemo(
+    () =>
+      desTrace.expectedCiphertextHex !== null
+        ? desTrace.ciphertextHex === desTrace.expectedCiphertextHex
+        : desDecryptBlock(desTrace.ciphertextHex, desTrace.keyHex) === desTrace.plaintextHex,
+    [desTrace],
+  );
+  const usingKnownVector = desTrace.expectedCiphertextHex !== null;
   const dockSteps = useMemo(
     () =>
       desTrace.rounds.map((round) => ({
         id: String(round.round),
         label: `Round ${round.round}`,
       })),
-    [],
+    [desTrace],
   );
 
   useEffect(() => {
@@ -354,9 +479,10 @@ export function DesWalkthrough() {
     }, 1700);
 
     return () => window.clearTimeout(timer);
-  }, [activeRoundIndex, isPlaying, reducedMotion]);
+  }, [activeRoundIndex, isPlaying, reducedMotion, desTrace.rounds.length]);
 
   return (
+    <DesTraceContext.Provider value={desTrace}>
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
       <div className="rounded-lg border border-neutral-900/10 bg-neutral-950 p-5 text-white">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
@@ -375,10 +501,10 @@ export function DesWalkthrough() {
               </div>
             </div>
             <p className="mt-5 leading-7 text-neutral-300">
-              This phase replaces the toy demo for DES with the real DES data path:
-              initial permutation, PC-1/PC-2 key schedule, 16 Feistel rounds, final
-              swap, and final permutation. The sample uses the classic standard test
-              vector.
+              This is the real DES data path: initial permutation, PC-1/PC-2 key
+              schedule, 16 Feistel rounds, final swap, and final permutation. It
+              starts from the classic standard test vector — enter your own block
+              and key below to re-run every round.
             </p>
           </div>
         </div>
@@ -410,6 +536,33 @@ export function DesWalkthrough() {
           </div>
         </div>
       </div>
+
+      <TraceInputsPanel
+        title="Try your own block and key"
+        description="Every table, bit grid, and round below recomputes from these values."
+        error={inputError}
+      >
+        <div className="grid gap-5 lg:grid-cols-2">
+          <TextOrHexField
+            label="Plaintext block"
+            value={fields.plaintext}
+            onChange={(plaintext) => setFields((current) => ({ ...current, plaintext }))}
+            byteLength={8}
+            error={fieldErrors.plaintext}
+          />
+          <HexKeyField
+            label="64-bit key"
+            value={fields.keyHex}
+            onChange={(keyHex) => setFields((current) => ({ ...current, keyHex }))}
+            byteLength={8}
+            onGenerate={() =>
+              setFields((current) => ({ ...current, keyHex: randomHex(8) }))
+            }
+            helpText="DES ignores the 8 parity bits, so any hex value is a valid key"
+            error={fieldErrors.key}
+          />
+        </div>
+      </TraceInputsPanel>
 
       <section className="rounded-lg border border-neutral-900/10 bg-white p-5">
         <div className="flex items-center gap-3">
@@ -452,7 +605,13 @@ export function DesWalkthrough() {
             )}
           >
             <CheckCircle2 aria-hidden="true" size={17} />
-            {matchesExpected ? "Matches known vector" : "Vector mismatch"}
+            {usingKnownVector
+              ? matchesExpected
+                ? "Matches known vector"
+                : "Vector mismatch"
+              : matchesExpected
+                ? "Round-trip verified"
+                : "Round-trip failed"}
           </div>
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -527,7 +686,9 @@ export function DesWalkthrough() {
               {desTrace.ciphertextHex}
             </code>
             <p className="mt-3 text-sm font-semibold">
-              Expected standard vector: {desTrace.expectedCiphertextHex}
+              {usingKnownVector
+                ? `Expected standard vector: ${desTrace.expectedCiphertextHex}`
+                : "Round-trip check: decrypting this ciphertext with your key recovers your plaintext."}
             </p>
           </div>
         </div>
@@ -547,5 +708,6 @@ export function DesWalkthrough() {
         title="DES"
       />
     </section>
+    </DesTraceContext.Provider>
   );
 }
