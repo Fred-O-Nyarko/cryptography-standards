@@ -17,7 +17,9 @@ import {
 } from "react";
 
 import {
+  BitsHover,
   GenerateKeysButton,
+  HexHover,
   HexKeyField,
   MathExpression,
   TextOrHexField,
@@ -156,7 +158,9 @@ function ValueCard({
       >
         {label}
       </p>
-      <code className="mt-3 block break-all font-mono text-xl font-black">{value}</code>
+      <code className="mt-3 block break-all font-mono text-xl font-black">
+        <HexHover hex={value} />
+      </code>
       <p className={cx("mt-3 text-sm leading-6", tone === "dark" ? "text-neutral-300" : "text-neutral-700")}>
         {detail}
       </p>
@@ -175,16 +179,18 @@ function BitGrid({ bits, label }: { bits: string; label: string }) {
           {bits.length} bits
         </code>
       </div>
-      <div className="grid grid-cols-8 gap-1 sm:grid-cols-16" aria-label={`${label}: ${groupBits(bits)}`}>
-        {bits.split("").map((bit, index) => (
-          <span
-            key={`${label}-${index}`}
-            className="grid aspect-square min-h-6 place-items-center rounded-sm bg-neutral-100 font-mono text-[11px] font-bold text-neutral-700"
-          >
-            {bit}
-          </span>
-        ))}
-      </div>
+      <BitsHover bits={bits} block>
+        <div className="grid grid-cols-8 gap-1 sm:grid-cols-16" aria-label={`${label}: ${groupBits(bits)}`}>
+          {bits.split("").map((bit, index) => (
+            <span
+              key={`${label}-${index}`}
+              className="grid aspect-square min-h-6 place-items-center rounded-sm bg-neutral-100 font-mono text-[11px] font-bold text-neutral-700"
+            >
+              {bit}
+            </span>
+          ))}
+        </div>
+      </BitsHover>
     </div>
   );
 }
@@ -216,7 +222,7 @@ function StageButton({
       </p>
       <h3 className="mt-2 text-lg font-black">{stage.operation === "encrypt" ? "DES encrypt" : "DES decrypt"}</h3>
       <code className={cx("mt-3 block break-all font-mono text-sm", active ? "text-neutral-200" : "text-neutral-700")}>
-        {stage.outputHex}
+        <HexHover hex={stage.outputHex} />
       </code>
     </button>
   );
@@ -370,7 +376,7 @@ function DecryptionPath() {
               {stage.keyLabel} · DES {stage.operation}
             </p>
             <code className="mt-2 block break-all font-mono text-sm font-black text-neutral-950">
-              {stage.inputHex} {"->"} {stage.outputHex}
+              <HexHover hex={stage.inputHex} /> {"->"} <HexHover hex={stage.outputHex} />
             </code>
             <p className="mt-3 text-sm leading-6 text-neutral-700">{stage.description}</p>
           </div>
@@ -378,7 +384,10 @@ function DecryptionPath() {
       </div>
       <div className="mt-5 rounded-md bg-emerald-100 p-4">
         <p className="text-sm font-bold text-emerald-950">
-          Recovered plaintext: <code>{tdesTrace.decryptedPlaintextHex}</code>
+          Recovered plaintext:{" "}
+          <code>
+            <HexHover hex={tdesTrace.decryptedPlaintextHex} />
+          </code>
         </p>
       </div>
     </section>
@@ -668,8 +677,14 @@ export function TdesWalkthrough() {
           </div>
         </div>
         <p className="mt-4 leading-7 text-neutral-800">
-          The computed ciphertext is <code>{tdesTrace.ciphertextHex}</code>, and the reverse
-          D-E-D path recovers <code>{tdesTrace.decryptedPlaintextHex}</code>
+          The computed ciphertext is{" "}
+          <code>
+            <HexHover hex={tdesTrace.ciphertextHex} />
+          </code>
+          , and the reverse D-E-D path recovers{" "}
+          <code>
+            <HexHover hex={tdesTrace.decryptedPlaintextHex} />
+          </code>
           {roundTripPassed ? ", matching your plaintext exactly." : "."}
         </p>
       </section>

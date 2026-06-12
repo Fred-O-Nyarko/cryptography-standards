@@ -16,6 +16,8 @@ import {
 } from "react";
 
 import {
+  BitsHover,
+  HexHover,
   HexKeyField,
   MathExpression,
   TextOrHexField,
@@ -124,28 +126,30 @@ function BitGrid({
           {bits.length} bits
         </code>
       </div>
-      <div
-        className="grid grid-cols-8 gap-1 sm:grid-cols-16"
-        aria-label={`${label}: ${groupBits(bits, groupSize)}`}
-      >
-        {bits.split("").map((bit, index) => {
-          const active = activeIndexes.includes(index);
+      <BitsHover bits={bits} block>
+        <div
+          className="grid grid-cols-8 gap-1 sm:grid-cols-16"
+          aria-label={`${label}: ${groupBits(bits, groupSize)}`}
+        >
+          {bits.split("").map((bit, index) => {
+            const active = activeIndexes.includes(index);
 
-          return (
-            <span
-              key={`${label}-${index}`}
-              className={cx(
-                "grid aspect-square min-h-6 place-items-center rounded-sm font-mono text-[11px] font-bold motion-safe:transition-transform motion-safe:duration-150",
-                active
-                  ? "bg-emerald-300 text-neutral-950 motion-safe:scale-105"
-                  : "bg-neutral-100 text-neutral-700",
-              )}
-            >
-              {bit}
-            </span>
-          );
-        })}
-      </div>
+            return (
+              <span
+                key={`${label}-${index}`}
+                className={cx(
+                  "grid aspect-square min-h-6 place-items-center rounded-sm font-mono text-[11px] font-bold motion-safe:transition-transform motion-safe:duration-150",
+                  active
+                    ? "bg-emerald-300 text-neutral-950 motion-safe:scale-105"
+                    : "bg-neutral-100 text-neutral-700",
+                )}
+              >
+                {bit}
+              </span>
+            );
+          })}
+        </div>
+      </BitsHover>
     </div>
   );
 }
@@ -165,7 +169,7 @@ function ValueCard({
         {label}
       </p>
       <code className="mt-3 block break-all font-mono text-xl font-black text-neutral-950">
-        {value}
+        <HexHover hex={value} />
       </code>
       <p className="mt-3 text-sm leading-6 text-neutral-700">{detail}</p>
     </div>
@@ -355,9 +359,15 @@ function KeyScheduleTable({
                   </button>
                 </td>
                 <td className="py-3 pr-4 font-mono">{round.shift}</td>
-                <td className="py-3 pr-4 font-mono">{bitsToHex(round.c)}</td>
-                <td className="py-3 pr-4 font-mono">{bitsToHex(round.d)}</td>
-                <td className="py-3 pr-4 font-mono font-bold">{bitsToHex(round.subkey)}</td>
+                <td className="py-3 pr-4 font-mono">
+                  <HexHover hex={bitsToHex(round.c)} />
+                </td>
+                <td className="py-3 pr-4 font-mono">
+                  <HexHover hex={bitsToHex(round.d)} />
+                </td>
+                <td className="py-3 pr-4 font-mono font-bold">
+                  <HexHover hex={bitsToHex(round.subkey)} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -396,9 +406,15 @@ function RoundSummaryTable({ rounds }: { rounds: DesRoundTrace[] }) {
             {rounds.map((round) => (
               <tr key={round.round} className="border-b border-neutral-900/10">
                 <td className="py-3 pr-4 font-black">{round.round}</td>
-                <td className="py-3 pr-4 font-mono">{bitsToHex(round.leftAfter)}</td>
-                <td className="py-3 pr-4 font-mono">{bitsToHex(round.rightAfter)}</td>
-                <td className="py-3 pr-4 font-mono">{bitsToHex(round.subkey)}</td>
+                <td className="py-3 pr-4 font-mono">
+                  <HexHover hex={bitsToHex(round.leftAfter)} />
+                </td>
+                <td className="py-3 pr-4 font-mono">
+                  <HexHover hex={bitsToHex(round.rightAfter)} />
+                </td>
+                <td className="py-3 pr-4 font-mono">
+                  <HexHover hex={bitsToHex(round.subkey)} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -515,7 +531,7 @@ export function DesWalkthrough() {
               Plaintext
             </p>
             <code className="mt-2 block font-mono text-xl font-black text-white">
-              {desTrace.plaintextHex}
+              <HexHover hex={desTrace.plaintextHex} />
             </code>
           </div>
           <div className="rounded-md bg-white/10 p-4">
@@ -523,7 +539,7 @@ export function DesWalkthrough() {
               64-bit key
             </p>
             <code className="mt-2 block font-mono text-xl font-black text-white">
-              {desTrace.keyHex}
+              <HexHover hex={desTrace.keyHex} />
             </code>
           </div>
           <div className="rounded-md bg-emerald-300 p-4 text-neutral-950">
@@ -531,7 +547,7 @@ export function DesWalkthrough() {
               Computed ciphertext
             </p>
             <code className="mt-2 block font-mono text-xl font-black">
-              {desTrace.ciphertextHex}
+              <HexHover hex={desTrace.ciphertextHex} />
             </code>
           </div>
         </div>
@@ -683,7 +699,7 @@ export function DesWalkthrough() {
               Ciphertext after final permutation
             </p>
             <code className="mt-3 block break-all font-mono text-3xl font-black">
-              {desTrace.ciphertextHex}
+              <HexHover hex={desTrace.ciphertextHex} />
             </code>
             <p className="mt-3 text-sm font-semibold">
               {usingKnownVector

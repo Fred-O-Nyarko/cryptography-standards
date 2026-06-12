@@ -343,6 +343,7 @@ export function BitBlockGrid({
   const bits = bitPattern.replace(/\s/g, "").split("");
 
   return (
+    <BitsHover bits={bitPattern} block>
     <div
       className="grid grid-cols-4 gap-2 sm:grid-cols-8"
       aria-label={`Bit pattern ${bits.join("")}`}
@@ -365,6 +366,7 @@ export function BitBlockGrid({
         );
       })}
     </div>
+    </BitsHover>
   );
 }
 
@@ -1106,5 +1108,120 @@ export function GenerateKeysButton({
       <Dices aria-hidden="true" size={17} />
       {children}
     </button>
+  );
+}
+
+function hexToBinaryDisplay(hex: string) {
+  return hex
+    .replace(/[^0-9A-Fa-f]/g, "")
+    .split("")
+    .map((character) => Number.parseInt(character, 16).toString(2).padStart(4, "0"))
+    .join(" ");
+}
+
+function bitsToHexDisplay(bits: string) {
+  const normalized = bits.replace(/[^01]/g, "");
+  const nibbles: string[] = [];
+
+  for (let index = 0; index < normalized.length; index += 4) {
+    nibbles.push(
+      Number.parseInt(normalized.slice(index, index + 4).padEnd(4, "0"), 2)
+        .toString(16)
+        .toUpperCase(),
+    );
+  }
+
+  const bytes: string[] = [];
+
+  for (let index = 0; index < nibbles.length; index += 2) {
+    bytes.push(nibbles.slice(index, index + 2).join(""));
+  }
+
+  return bytes.join(" ");
+}
+
+function ConversionHover({
+  popperLabel,
+  popperValue,
+  children,
+  className,
+  block = false,
+}: {
+  popperLabel: string;
+  popperValue: string;
+  children: React.ReactNode;
+  className?: string;
+  block?: boolean;
+}) {
+  return (
+    <span
+      tabIndex={0}
+      className={cx(
+        "group/convert relative cursor-help rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700",
+        block
+          ? "block w-full"
+          : "inline-block max-w-full underline decoration-current/30 decoration-dotted underline-offset-4",
+        className,
+      )}
+    >
+      {children}
+      <span
+        role="tooltip"
+        className="pointer-events-none invisible absolute bottom-full left-1/2 z-40 mb-2 w-max max-w-80 -translate-x-1/2 rounded-md border border-white/10 bg-neutral-950 px-3 py-2 text-left no-underline opacity-0 shadow-lg transition-opacity duration-100 group-hover/convert:visible group-hover/convert:opacity-100 group-focus-visible/convert:visible group-focus-visible/convert:opacity-100"
+      >
+        <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+          {popperLabel}
+        </span>
+        <span className="mt-1 block break-all font-mono text-xs font-bold leading-5 text-white">
+          {popperValue}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+export function HexHover({
+  hex,
+  children,
+  className,
+  block,
+}: {
+  hex: string;
+  children?: React.ReactNode;
+  className?: string;
+  block?: boolean;
+}) {
+  return (
+    <ConversionHover
+      popperLabel="Binary"
+      popperValue={hexToBinaryDisplay(hex)}
+      className={className}
+      block={block}
+    >
+      {children ?? hex}
+    </ConversionHover>
+  );
+}
+
+export function BitsHover({
+  bits,
+  children,
+  className,
+  block,
+}: {
+  bits: string;
+  children: React.ReactNode;
+  className?: string;
+  block?: boolean;
+}) {
+  return (
+    <ConversionHover
+      popperLabel="Hex"
+      popperValue={bitsToHexDisplay(bits)}
+      className={className}
+      block={block}
+    >
+      {children}
+    </ConversionHover>
   );
 }

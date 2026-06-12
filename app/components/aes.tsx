@@ -16,6 +16,7 @@ import {
 } from "react";
 
 import {
+  HexHover,
   HexKeyField,
   MathExpression,
   TextOrHexField,
@@ -132,7 +133,11 @@ function ValueCard({
         {label}
       </p>
       <code className="mt-3 block break-all font-mono text-lg font-black sm:text-xl">
-        {value}
+        {/^[0-9A-F]+$/.test(String(value)) && String(value).length % 2 === 0 ? (
+          <HexHover hex={String(value)} />
+        ) : (
+          value
+        )}
       </code>
       <p className={cx("mt-3 text-sm leading-6", tone === "dark" ? "text-neutral-300" : "text-neutral-700")}>
         {detail}
@@ -198,23 +203,28 @@ function StateMatrix({
       >
         {rows.flatMap((row, rowIndex) =>
           row.map((byte, columnIndex) => (
-            <code
+            <HexHover
               key={`${label}-${rowIndex}-${columnIndex}`}
-              className={cx(
-                "grid min-h-11 place-items-center rounded-sm border font-mono text-sm font-black",
-                active
-                  ? "border-emerald-800/20 bg-white text-emerald-950"
-                  : "border-neutral-900/10 bg-neutral-100 text-neutral-800",
-              )}
+              hex={formatByte(byte)}
+              block
             >
-              {formatByte(byte)}
-            </code>
+              <code
+                className={cx(
+                  "grid min-h-11 place-items-center rounded-sm border font-mono text-sm font-black",
+                  active
+                    ? "border-emerald-800/20 bg-white text-emerald-950"
+                    : "border-neutral-900/10 bg-neutral-100 text-neutral-800",
+                )}
+              >
+                {formatByte(byte)}
+              </code>
+            </HexHover>
           )),
         )}
       </div>
 
       <code className="mt-3 block break-all rounded-md bg-neutral-950 px-3 py-2 font-mono text-xs font-bold text-neutral-100">
-        {hex}
+        <HexHover hex={hex} />
       </code>
     </div>
   );
@@ -419,7 +429,7 @@ function TransformationMap({ activeStep }: { activeStep: number }) {
               {label}
             </p>
             <code className="mt-2 block break-all font-mono text-sm font-black text-neutral-950">
-              {value}
+              <HexHover hex={value} />
             </code>
           </div>
         ))}
@@ -508,14 +518,14 @@ function KeySchedulePanel({ activeStep, onSelect }: { activeStep: number; onSele
                         key={`${row.round}-${word}-${index}`}
                         className="rounded-sm bg-neutral-100 px-2 py-1 font-mono text-xs font-bold text-neutral-800"
                       >
-                        {word}
+                        <HexHover hex={word} />
                       </code>
                     ))}
                   </div>
                 </td>
                 <td className="py-3 pr-4">
                   <code className="block max-w-[280px] break-all font-mono text-xs font-black text-neutral-950">
-                    {row.roundKey}
+                    <HexHover hex={row.roundKey} />
                   </code>
                 </td>
                 <td className="py-3 pr-4 text-neutral-700">{row.use}</td>
