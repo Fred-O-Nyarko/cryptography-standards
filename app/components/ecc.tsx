@@ -1,12 +1,8 @@
 import {
-  ArrowLeft,
-  ArrowRight,
   Binary,
   Calculator,
   CheckCircle2,
   KeyRound,
-  Pause,
-  Play,
   ShieldAlert,
   ShieldCheck,
   Waypoints,
@@ -20,7 +16,7 @@ import {
   type EcPoint,
   type EccScalarStep,
 } from "~/content/ecc";
-import { MathExpression, MathOrText } from "~/components/learning";
+import { MathExpression, MathOrText, VisualizerDock } from "~/components/learning";
 
 type StageId = "curve" | "point-math" | "keygen" | "ecdh" | "toy-mask";
 
@@ -168,70 +164,6 @@ function StageSelector({
           {stage.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-function PlaybackControls({
-  activeStage,
-  playing,
-  reducedMotion,
-  onPrevious,
-  onNext,
-  onToggle,
-}: {
-  activeStage: StageId;
-  playing: boolean;
-  reducedMotion: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-  onToggle: () => void;
-}) {
-  const stage = stages.find((entry) => entry.id === activeStage) ?? stages[0];
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-neutral-900/10 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
-          ECC walkthrough
-        </p>
-        <p className="mt-1 text-sm leading-6 text-neutral-700" aria-live="polite">
-          {stage.title}
-        </p>
-        {reducedMotion ? (
-          <p className="mt-1 text-sm font-semibold text-amber-800">
-            Autoplay is disabled because reduced motion is enabled.
-          </p>
-        ) : null}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onPrevious}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-neutral-900/10 bg-white px-3 text-sm font-bold text-neutral-900 transition-colors duration-100 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-        >
-          <ArrowLeft aria-hidden="true" size={16} />
-          Previous
-        </button>
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={reducedMotion}
-          aria-pressed={playing}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md bg-neutral-950 px-3 text-sm font-bold text-white transition-colors duration-100 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
-        >
-          {playing ? <Pause aria-hidden="true" size={16} /> : <Play aria-hidden="true" size={16} />}
-          {playing ? "Pause" : "Play"}
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-neutral-900/10 bg-white px-3 text-sm font-bold text-neutral-900 transition-colors duration-100 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-        >
-          Next
-          <ArrowRight aria-hidden="true" size={16} />
-        </button>
-      </div>
     </div>
   );
 }
@@ -765,13 +697,10 @@ export function EccWalkthrough() {
     return () => window.clearInterval(intervalId);
   }, [playing, reducedMotion]);
 
-  const goPrevious = () => {
-    setActiveStage(stages[(activeIndex - 1 + stages.length) % stages.length].id);
-  };
-
-  const goNext = () => {
-    setActiveStage(stages[(activeIndex + 1) % stages.length].id);
-  };
+  const dockSteps = useMemo(
+    () => stages.map((stage) => ({ id: stage.id, label: stage.label })),
+    [],
+  );
 
   return (
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
@@ -814,15 +743,6 @@ export function EccWalkthrough() {
 
       <FormulaStrip />
 
-      <PlaybackControls
-        activeStage={activeStage}
-        playing={playing}
-        reducedMotion={reducedMotion}
-        onPrevious={goPrevious}
-        onNext={goNext}
-        onToggle={() => setPlaying((current) => !current)}
-      />
-
       <StageSelector activeStage={activeStage} onSelect={setActiveStage} />
 
       <ActiveStage activeStage={activeStage} />
@@ -861,6 +781,20 @@ export function EccWalkthrough() {
           ))}
         </ol>
       </div>
+
+      <VisualizerDock
+        steps={dockSteps}
+        activeIndex={activeIndex}
+        onSelect={(index) => setActiveStage(stages[index].id)}
+        playing={playing}
+        onTogglePlay={() => setPlaying((current) => !current)}
+        onReset={() => {
+          setActiveStage(stages[0].id);
+          setPlaying(false);
+        }}
+        stepNoun="Stage"
+        title="ECC"
+      />
     </section>
   );
 }

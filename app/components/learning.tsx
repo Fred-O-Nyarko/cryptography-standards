@@ -1,10 +1,7 @@
 import katex from "katex";
 import {
-  ArrowLeft,
   ArrowRight,
-  Binary,
   BookOpen,
-  BrainCircuit,
   Calculator,
   CheckCircle2,
   ChevronLeft,
@@ -12,16 +9,13 @@ import {
   ExternalLink,
   GraduationCap,
   KeyRound,
-  Layers3,
   Library,
   LockKeyhole,
   Pause,
   Play,
-  Presentation,
-  Route,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
-  Waypoints,
 } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, NavLink } from "react-router";
@@ -32,7 +26,6 @@ import {
   type LessonModule,
   type LessonSection,
   type Reference,
-  slideScaffold,
   type VisualizerConfig,
 } from "~/content/crypto";
 
@@ -84,7 +77,6 @@ export function SiteShell({
             {[
               { to: "/", label: "Course", icon: BookOpen },
               { to: "/references", label: "References", icon: Library },
-              { to: "/present", label: "Present", icon: Presentation },
             ].map((item) => (
               <NavLink
                 key={item.to}
@@ -196,44 +188,6 @@ export function FamilyPill({ family }: { family: LessonModule["family"] }) {
       <Icon aria-hidden="true" size={16} />
       {familyLabels[family]}
     </span>
-  );
-}
-
-const stepTimelineIcons: Record<LessonSection["type"], IconComponent> = {
-  concept: BrainCircuit,
-  math: Calculator,
-  "key-generation": KeyRound,
-  "encryption-flow": LockKeyhole,
-  "decryption-flow": ShieldCheck,
-  demo: Binary,
-  checkpoint: CheckCircle2,
-};
-
-export function StepTimeline({ sections }: { sections: LessonSection[] }) {
-  return (
-    <ol className="grid gap-3">
-      {sections.map((section, index) => {
-        const Icon = stepTimelineIcons[section.type];
-
-        return (
-          <li
-            key={section.id}
-            className="grid grid-cols-[auto_1fr] gap-4 rounded-lg border border-neutral-900/10 bg-white p-4"
-          >
-            <span className="grid h-11 w-11 place-items-center rounded-md bg-neutral-950 text-emerald-300">
-              <Icon aria-hidden="true" size={19} />
-            </span>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                Step {index + 1} · {section.type.replace("-", " ")}
-              </p>
-              <h3 className="mt-1 text-lg font-bold text-neutral-950">{section.title}</h3>
-              <p className="mt-1 text-sm leading-6 text-neutral-700">{section.summary}</p>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -661,106 +615,147 @@ export function CheckpointCard({ module }: { module: LessonModule }) {
   );
 }
 
-export function PresenterControls({
-  current,
-  total,
-  onPrevious,
-  onNext,
+export type DockStep = {
+  id: string;
+  label: string;
+};
+
+export function VisualizerDock({
+  steps,
+  activeIndex,
+  onSelect,
+  playing,
+  onTogglePlay,
+  onReset,
+  stepNoun = "Step",
+  title,
 }: {
-  current: number;
-  total: number;
-  onPrevious: () => void;
-  onNext: () => void;
+  steps: DockStep[];
+  activeIndex: number;
+  onSelect: (index: number) => void;
+  playing: boolean;
+  onTogglePlay: () => void;
+  onReset?: () => void;
+  stepNoun?: string;
+  title?: string;
 }) {
+  const reducedMotion = usePrefersReducedMotion();
+  const activeStep = steps[activeIndex];
+  const atStart = activeIndex <= 0;
+  const atEnd = activeIndex >= steps.length - 1;
+  const positionText = `${stepNoun} ${activeIndex + 1} of ${steps.length}`;
+  const labelIsRedundant = activeStep?.label === `${stepNoun} ${activeIndex + 1}`;
+
   return (
-    <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-neutral-900/10 bg-white p-2 shadow-lg">
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+      <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1 rounded-full border border-white/10 bg-neutral-950 px-2 py-2 text-white shadow-lg sm:flex-nowrap">
+      {title ? (
+        <span className="hidden px-2 text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400 sm:inline">
+          {title}
+        </span>
+      ) : null}
       <button
         type="button"
-        onClick={onPrevious}
-        className="grid min-h-10 min-w-10 place-items-center rounded-md bg-neutral-100 text-neutral-950 transition-colors duration-100 hover:bg-neutral-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-        aria-label="Previous slide"
-        title="Previous slide"
+        onClick={() => {
+          if (onReset) {
+            onReset();
+          } else {
+            onSelect(0);
+          }
+        }}
+        className="grid min-h-10 min-w-10 place-items-center rounded-full text-neutral-300 transition-colors duration-100 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+        aria-label={`Reset to first ${stepNoun.toLowerCase()}`}
+        title="Reset"
       >
-        <ArrowLeft aria-hidden="true" size={18} />
+        <RotateCcw aria-hidden="true" size={17} />
       </button>
-      <span className="min-w-20 text-center text-sm font-bold text-neutral-700">
-        {current + 1} / {total}
+      <button
+        type="button"
+        onClick={() => onSelect(Math.max(0, activeIndex - 1))}
+        disabled={atStart}
+        className="grid min-h-10 min-w-10 place-items-center rounded-full text-white transition-colors duration-100 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent"
+        aria-label={`Previous ${stepNoun.toLowerCase()}`}
+        title={`Previous ${stepNoun.toLowerCase()}`}
+      >
+        <ChevronLeft aria-hidden="true" size={19} />
+      </button>
+      <button
+        type="button"
+        onClick={onTogglePlay}
+        disabled={reducedMotion}
+        aria-pressed={playing}
+        className="inline-flex min-h-10 items-center gap-2 rounded-full bg-emerald-300 px-4 text-sm font-bold text-neutral-950 transition-colors duration-100 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
+        title={
+          reducedMotion ? "Autoplay disabled (reduced motion)" : playing ? "Pause" : "Play"
+        }
+      >
+        {playing ? <Pause aria-hidden="true" size={17} /> : <Play aria-hidden="true" size={17} />}
+        {playing ? "Pause" : "Play"}
+      </button>
+      <button
+        type="button"
+        onClick={() => onSelect(Math.min(steps.length - 1, activeIndex + 1))}
+        disabled={atEnd}
+        className="grid min-h-10 min-w-10 place-items-center rounded-full text-white transition-colors duration-100 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent"
+        aria-label={`Next ${stepNoun.toLowerCase()}`}
+        title={`Next ${stepNoun.toLowerCase()}`}
+      >
+        <ChevronRight aria-hidden="true" size={19} />
+      </button>
+      <span aria-live="polite" className="flex items-baseline gap-2 px-2 text-sm">
+        {!labelIsRedundant && activeStep ? (
+          <span className="hidden max-w-44 truncate font-bold sm:inline">
+            {activeStep.label}
+          </span>
+        ) : null}
+        <span className="whitespace-nowrap font-semibold text-neutral-400">
+          {positionText}
+        </span>
       </span>
-      <button
-        type="button"
-        onClick={onNext}
-        className="grid min-h-10 min-w-10 place-items-center rounded-md bg-neutral-950 text-white transition-colors duration-100 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-        aria-label="Next slide"
-        title="Next slide"
-      >
-        <ArrowRight aria-hidden="true" size={18} />
-      </button>
+      </div>
     </div>
   );
 }
 
-export function SlideFrame({
-  activeSlide,
-  current,
+export function CollapsibleSection({
+  title,
+  kicker,
+  icon: Icon,
+  defaultOpen = false,
+  children,
 }: {
-  activeSlide: (typeof slideScaffold)[number];
-  current: number;
+  title: string;
+  kicker?: string;
+  icon?: IconComponent;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
 }) {
-  const Icon = [ShieldCheck, Route, Layers3, Waypoints, Binary, Library][current] ?? Presentation;
-
   return (
-    <main className="min-h-screen bg-neutral-950 px-4 py-5 text-white md:px-8">
-      <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-7xl flex-col rounded-lg border border-white/10 bg-[#14110f] p-6 md:p-10">
-        <div className="flex items-start justify-between gap-6">
-          <Link
-            to="/"
-            className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm font-bold text-neutral-300 transition-colors duration-100 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-          >
-            <ArrowLeft aria-hidden="true" size={17} />
-            Exit deck
-          </Link>
-          <span className="rounded-md bg-emerald-300 px-3 py-1 text-sm font-black text-neutral-950">
-            Phase 1
+    <details
+      open={defaultOpen}
+      className="group rounded-lg border border-neutral-900/10 bg-white"
+    >
+      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-3 p-5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 [&::-webkit-details-marker]:hidden">
+        {Icon ? (
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-neutral-950 text-emerald-300">
+            <Icon aria-hidden="true" size={18} />
           </span>
-        </div>
-
-        <div className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[1fr_360px]">
-          <section>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-300">
-              {activeSlide.kicker}
-            </p>
-            <h1 className="mt-5 max-w-5xl text-5xl font-black leading-tight md:text-7xl">
-              {activeSlide.title}
-            </h1>
-            <ul className="mt-10 grid max-w-4xl gap-4">
-              {activeSlide.points.map((point) => (
-                <li key={point} className="flex gap-4 text-xl leading-9 text-neutral-200">
-                  <CheckCircle2
-                    aria-hidden="true"
-                    className="mt-2 shrink-0 text-amber-300"
-                    size={22}
-                  />
-                  <span>{point}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <aside className="hidden rounded-lg border border-white/10 bg-white p-6 text-neutral-950 lg:block">
-            <span className="grid h-24 w-24 place-items-center rounded-md bg-neutral-950 text-emerald-300">
-              <Icon aria-hidden="true" size={44} />
+        ) : null}
+        <span className="min-w-0 flex-1">
+          {kicker ? (
+            <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
+              {kicker}
             </span>
-            <p className="mt-8 text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500">
-              Slide scaffold
-            </p>
-            <p className="mt-3 text-5xl font-black">{String(current + 1).padStart(2, "0")}</p>
-            <p className="mt-4 leading-7 text-neutral-700">
-              This deck route mirrors the editable slide scaffold and is optimized for classroom
-              delivery.
-            </p>
-          </aside>
-        </div>
-      </div>
-    </main>
+          ) : null}
+          <span className="block text-lg font-bold text-neutral-950">{title}</span>
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className="shrink-0 text-neutral-500 transition-transform duration-150 group-open:rotate-90"
+          size={19}
+        />
+      </summary>
+      <div className="px-5 pb-5">{children}</div>
+    </details>
   );
 }

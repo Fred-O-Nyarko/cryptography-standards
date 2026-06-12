@@ -1,17 +1,13 @@
 import {
-  ArrowLeft,
-  ArrowRight,
   Binary,
   Calculator,
   CheckCircle2,
   KeyRound,
-  Pause,
-  Play,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { MathExpression } from "~/components/learning";
+import { MathExpression, VisualizerDock } from "~/components/learning";
 import { aesTrace, stateHexToRows, type AesRoundTrace } from "~/content/aes";
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -178,68 +174,6 @@ function RoundSelector({
           {step === 0 ? "Init" : step}
         </button>
       ))}
-    </div>
-  );
-}
-
-function PlaybackControls({
-  activeStep,
-  playing,
-  reducedMotion,
-  onPrevious,
-  onNext,
-  onToggle,
-}: {
-  activeStep: number;
-  playing: boolean;
-  reducedMotion: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-neutral-900/10 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
-          Round playback
-        </p>
-        <p className="mt-1 text-sm leading-6 text-neutral-700" aria-live="polite">
-          {activeStep === 0 ? "Initial AddRoundKey" : `Round ${activeStep} of 10`}
-        </p>
-        {reducedMotion ? (
-          <p className="mt-1 text-sm font-semibold text-amber-800">
-            Autoplay is disabled because reduced motion is enabled.
-          </p>
-        ) : null}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onPrevious}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-neutral-900/10 bg-white px-3 text-sm font-bold text-neutral-900 transition-colors duration-100 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-        >
-          <ArrowLeft aria-hidden="true" size={16} />
-          Previous
-        </button>
-        <button
-          type="button"
-          onClick={onToggle}
-          disabled={reducedMotion}
-          aria-pressed={playing}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md bg-neutral-950 px-3 text-sm font-bold text-white transition-colors duration-100 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
-        >
-          {playing ? <Pause aria-hidden="true" size={16} /> : <Play aria-hidden="true" size={16} />}
-          {playing ? "Pause" : "Play"}
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-neutral-900/10 bg-white px-3 text-sm font-bold text-neutral-900 transition-colors duration-100 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-        >
-          Next
-          <ArrowRight aria-hidden="true" size={16} />
-        </button>
-      </div>
     </div>
   );
 }
@@ -620,8 +554,14 @@ export function AesWalkthrough() {
     return () => window.clearInterval(intervalId);
   }, [playing, reducedMotion]);
 
-  const goPrevious = () => setActiveStep((step) => (step <= 0 ? 10 : step - 1));
-  const goNext = () => setActiveStep((step) => (step >= 10 ? 0 : step + 1));
+  const dockSteps = useMemo(
+    () =>
+      Array.from({ length: 11 }, (_, step) => ({
+        id: String(step),
+        label: step === 0 ? "Initial AddRoundKey" : `Round ${step}`,
+      })),
+    [],
+  );
 
   return (
     <section className="grid min-w-0 gap-6 [&>*]:min-w-0 [&>*]:w-full [&>*]:max-w-full">
@@ -665,15 +605,6 @@ export function AesWalkthrough() {
 
       <FormulaStrip />
 
-      <PlaybackControls
-        activeStep={activeStep}
-        playing={playing}
-        reducedMotion={reducedMotion}
-        onPrevious={goPrevious}
-        onNext={goNext}
-        onToggle={() => setPlaying((current) => !current)}
-      />
-
       <RoundSelector activeStep={activeStep} onSelect={setActiveStep} />
 
       <TransformationMap activeStep={activeStep} />
@@ -685,6 +616,20 @@ export function AesWalkthrough() {
       <DecryptionNote />
 
       <FinalCheck />
+
+      <VisualizerDock
+        steps={dockSteps}
+        activeIndex={activeStep}
+        onSelect={setActiveStep}
+        playing={playing}
+        onTogglePlay={() => setPlaying((current) => !current)}
+        onReset={() => {
+          setActiveStep(0);
+          setPlaying(false);
+        }}
+        stepNoun="Step"
+        title="AES-128"
+      />
     </section>
   );
 }

@@ -1,10 +1,12 @@
-minimumReleaseAge: 10080
-trustPolicy: no-downgrade
-
 allowBuilds:
   esbuild: set this to true or false
+
+minimumReleaseAge: 10080
 
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - esbuild
+  - msgpackr-extract
   - sharp
+
+trustPolicy: no-downgrade

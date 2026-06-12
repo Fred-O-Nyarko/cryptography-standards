@@ -1,18 +1,14 @@
 import {
-  ArrowLeft,
-  ArrowRight,
   CheckCircle2,
   KeyRound,
   Link2,
-  Pause,
-  Play,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { MathExpression } from "~/components/learning";
+import { MathExpression, VisualizerDock } from "~/components/learning";
 import { bitsToHex, groupBits, hexToBits } from "~/content/des";
 import { tdesTrace, type TdesStage } from "~/content/tdes";
 
@@ -329,6 +325,14 @@ export function TdesWalkthrough() {
   const [isPlaying, setIsPlaying] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const activeStage = tdesTrace.stages[activeIndex];
+  const dockSteps = useMemo(
+    () =>
+      tdesTrace.stages.map((stage) => ({
+        id: stage.id,
+        label: `${stage.operation === "encrypt" ? "Encrypt" : "Decrypt"} with ${stage.keyLabel}`,
+      })),
+    [],
+  );
 
   useEffect(() => {
     if (!isPlaying || reducedMotion) {
@@ -365,37 +369,6 @@ export function TdesWalkthrough() {
               the already-learned primitive and focuses on the composition, key bundle,
               compatibility behavior, and retirement status.
             </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveIndex((current) => Math.max(0, current - 1))}
-              className="grid min-h-10 min-w-10 place-items-center rounded-md border border-white/10 bg-white/10 text-white transition-colors duration-100 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-              aria-label="Previous 3DES stage"
-              title="Previous stage"
-            >
-              <ArrowLeft aria-hidden="true" size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsPlaying((current) => !current)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-md bg-emerald-300 px-3 text-sm font-bold text-neutral-950 transition-colors duration-100 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-            >
-              {isPlaying ? <Pause aria-hidden="true" size={17} /> : <Play aria-hidden="true" size={17} />}
-              {isPlaying ? "Pause" : "Play stages"}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setActiveIndex((current) => Math.min(tdesTrace.stages.length - 1, current + 1))
-              }
-              className="grid min-h-10 min-w-10 place-items-center rounded-md border border-white/10 bg-white/10 text-white transition-colors duration-100 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-              aria-label="Next 3DES stage"
-              title="Next stage"
-            >
-              <ArrowRight aria-hidden="true" size={18} />
-            </button>
           </div>
         </div>
 
@@ -491,6 +464,20 @@ export function TdesWalkthrough() {
           D-E-D path recovers <code>{tdesTrace.decryptedPlaintextHex}</code>.
         </p>
       </section>
+
+      <VisualizerDock
+        steps={dockSteps}
+        activeIndex={activeIndex}
+        onSelect={setActiveIndex}
+        playing={isPlaying}
+        onTogglePlay={() => setIsPlaying((current) => !current)}
+        onReset={() => {
+          setActiveIndex(0);
+          setIsPlaying(false);
+        }}
+        stepNoun="Stage"
+        title="3DES"
+      />
     </section>
   );
 }

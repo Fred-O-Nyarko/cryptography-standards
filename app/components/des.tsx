@@ -1,17 +1,13 @@
 import {
-  ArrowLeft,
-  ArrowRight,
   Binary,
   Calculator,
   CheckCircle2,
   KeyRound,
-  Pause,
-  Play,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { MathExpression } from "~/components/learning";
+import { MathExpression, VisualizerDock } from "~/components/learning";
 import { bitsToHex, desTrace, groupBits, type DesRoundTrace } from "~/content/des";
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -339,6 +335,14 @@ export function DesWalkthrough() {
   const reducedMotion = usePrefersReducedMotion();
   const activeRound = desTrace.rounds[activeRoundIndex];
   const matchesExpected = desTrace.ciphertextHex === desTrace.expectedCiphertextHex;
+  const dockSteps = useMemo(
+    () =>
+      desTrace.rounds.map((round) => ({
+        id: String(round.round),
+        label: `Round ${round.round}`,
+      })),
+    [],
+  );
 
   useEffect(() => {
     if (!isPlaying || reducedMotion) {
@@ -376,37 +380,6 @@ export function DesWalkthrough() {
               swap, and final permutation. The sample uses the classic standard test
               vector.
             </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveRoundIndex((current) => Math.max(0, current - 1))}
-              className="grid min-h-10 min-w-10 place-items-center rounded-md border border-white/10 bg-white/10 text-white transition-colors duration-100 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-              aria-label="Previous DES round"
-              title="Previous round"
-            >
-              <ArrowLeft aria-hidden="true" size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsPlaying((current) => !current)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-md bg-emerald-300 px-3 text-sm font-bold text-neutral-950 transition-colors duration-100 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-            >
-              {isPlaying ? <Pause aria-hidden="true" size={17} /> : <Play aria-hidden="true" size={17} />}
-              {isPlaying ? "Pause" : "Play rounds"}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setActiveRoundIndex((current) => Math.min(desTrace.rounds.length - 1, current + 1))
-              }
-              className="grid min-h-10 min-w-10 place-items-center rounded-md border border-white/10 bg-white/10 text-white transition-colors duration-100 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-              aria-label="Next DES round"
-              title="Next round"
-            >
-              <ArrowRight aria-hidden="true" size={18} />
-            </button>
           </div>
         </div>
 
@@ -559,6 +532,20 @@ export function DesWalkthrough() {
           </div>
         </div>
       </section>
+
+      <VisualizerDock
+        steps={dockSteps}
+        activeIndex={activeRoundIndex}
+        onSelect={setActiveRoundIndex}
+        playing={isPlaying}
+        onTogglePlay={() => setIsPlaying((current) => !current)}
+        onReset={() => {
+          setActiveRoundIndex(0);
+          setIsPlaying(false);
+        }}
+        stepNoun="Round"
+        title="DES"
+      />
     </section>
   );
 }
